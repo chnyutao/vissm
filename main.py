@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 from config import Config
 from dataset import make_random_walks
 from models import SSM, VAE, MLPDecoder, MLPEncoder
-from utils import train_step
+from utils import eval_step, train_step
 
 # configuration
 config = tyro.cli(Config)
@@ -48,8 +48,10 @@ opt_state = opt.init(eqx.filter(model, eqx.is_array))
 
 # main loop
 train_step = partial(train_step, opt=opt, callback=lambda x: wandb.log(x))
+eval_step = partial(eval_step, callback=lambda x: wandb.log(x))
 for _ in tqdm(range(config.epochs)):
     # train
     for batch in dataset:
         key, subkey = jr.split(key)
         model, opt_state = train_step(model, batch, opt_state, key=subkey)
+eval_step(model)
