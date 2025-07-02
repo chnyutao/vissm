@@ -27,7 +27,7 @@ class VAE(eqx.Module):
         mean, log_std = jnp.split(self.encoder(x), 2)
         std = jnp.exp(log_std)
         z = mean + std * jr.normal(key, std.shape)
-        return z, {'posterior': (mean, std)}
+        return z, (mean, std)
 
     def __call__(self, x: Array, *, key: PRNGKeyArray) -> tuple[Array, PyTree]:
         """Forward the input through the variational auto-encoder.
@@ -42,7 +42,7 @@ class VAE(eqx.Module):
         """
         z, posterior = self.encode(x, key=key)
         return self.decoder(z), {
-            **posterior,
+            'posterior': posterior,
             'prior': (jnp.zeros_like(z), jnp.ones_like(z)),
         }
 

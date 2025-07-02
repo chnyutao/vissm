@@ -29,7 +29,7 @@ class SSM(eqx.Module):
         dists['prior'] = (mean, jnp.exp(log_std))
         # posterior
         zn, posterior = self.vae.encode(sn, key=key2)
-        dists.update(posterior)
+        dists['posterior'] = posterior
         # return
         return self.vae.decoder(zn), dists
 
