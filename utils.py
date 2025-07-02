@@ -1,22 +1,24 @@
+from collections.abc import Callable
+
 import equinox as eqx
+import jax
 import optax
-from jaxtyping import Array, PRNGKeyArray, PyTree
+from jaxtyping import Array, PRNGKeyArray
 
-from models import VAE
-from models.vae import loss_fn
-
-Model = VAE
+from models import SSM
+from models.ssm import loss_fn
 
 
 @eqx.filter_jit
 def train_step(
-    model: Model,
+    model: SSM,
     batch: tuple[Array, Array, Array],
     opt_state: optax.OptState,
     *,
-    opt: optax.GradientTransformation,
     key: PRNGKeyArray,
-) -> tuple[VAE, optax.OptState, PyTree]:
+    opt: optax.GradientTransformation,
+    callback: Callable[..., None] = lambda _: None,
+) -> tuple[SSM, optax.OptState]:
     """Performs a single jitted training step.
 
     Args:
@@ -24,17 +26,18 @@ def train_step(
         batch (`tuple[Array, Array, Array]`):
             A 3-tuple containing the batched states, actions, and next states.
         opt_state (`optax.OptState`): The current optimizer state.
-        opt (`optax.GradientTransformation`): The current optimizer.
         key (`PRNGKeyArray`): JAX random key.
+        opt (`optax.GradientTransformation`): The current optimizer.
+        callback (`Callable[..., None]`, optional):
+            Callback function for processing metrics. Default to `lambda _: None`.
 
     Returns:
-        A 3-tuple containing the updated model, the updated optimizer state,
-        and the training metrics.
+        A 2-tuple containing the updated model, the updated optimizer state.
     """
-    states, actions, next_states = batch
     [_, metrics], grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(
-        model, states, key=key
+        model, batch, key=key
     )
     updates, opt_state = opt.update(grads, opt_state)
     model = eqx.apply_updates(model, updates)
-    return model, opt_state, metrics
+    jax.debug.callback(callback, metrics)
+    return model, opt_state

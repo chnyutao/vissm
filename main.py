@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 
 from config import Config
 from dataset import make_random_walks
-from models import VAE, MLPDecoder, MLPEncoder
+from models import SSM, VAE, MLPDecoder, MLPEncoder
 from utils import train_step
 
 # configuration
@@ -29,20 +29,27 @@ dataset = make_random_walks(
 
 # init model
 key, enkey, dekey = jr.split(key, 1 + 2)
-model = VAE(
+vae = VAE(
     encoder=MLPEncoder(config.latent_size, key=enkey),
     decoder=MLPDecoder(config.latent_size, key=dekey),
 )
+tr = eqx.nn.MLP(
+    config.latent_size + 4,
+    config.latent_size * 2,
+    width_size=128,
+    depth=1,
+    key=dekey,
+)
+model = SSM(vae=vae, tr=tr)
 
 # init optimizer
 opt = optax.adam(config.lr)
 opt_state = opt.init(eqx.filter(model, eqx.is_array))
 
 # main loop
-train_step = partial(train_step, opt=opt)
+train_step = partial(train_step, opt=opt, callback=lambda x: wandb.log(x))
 for _ in tqdm(range(config.epochs)):
     # train
     for batch in dataset:
         key, subkey = jr.split(key)
-        model, opt_state, metrics = train_step(model, batch, opt_state, key=subkey)
-        wandb.log(metrics)
+        model, opt_state = train_step(model, batch, opt_state, key=subkey)
