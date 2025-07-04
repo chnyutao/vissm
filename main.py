@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 
 from config import Config
 from dataset import make_random_walks
-from models import SSM, VAE, MLPDecoder, MLPEncoder
+from models import GMVAE, SSM, VAE, MLPDecoder, MLPEncoder
 from utils import eval_step, train_step
 
 # configuration
@@ -28,17 +28,27 @@ dataset = make_random_walks(
 )
 
 # init model
-key, enkey, dekey = jr.split(key, 1 + 2)
-vae = VAE(
-    encoder=MLPEncoder(config.latent_size * 2, key=enkey),
-    decoder=MLPDecoder(config.latent_size, key=dekey),
-)
+key, enkey, dekey, trkey = jr.split(key, 1 + 3)
+if config.vae == 'gmvae':
+    distribution_size = config.k + config.k * config.latent_size * 2
+    vae = GMVAE(
+        encoder=MLPEncoder(distribution_size, key=enkey),
+        decoder=MLPDecoder(config.latent_size, key=dekey),
+        k=config.k,
+        tau=config.tau,
+    )
+elif config.vae == 'vae':
+    distribution_size = config.latent_size * 2
+    vae = VAE(
+        encoder=MLPEncoder(config.latent_size * 2, key=enkey),
+        decoder=MLPDecoder(config.latent_size, key=dekey),
+    )
 tr = eqx.nn.MLP(
     config.latent_size + 4,
-    config.latent_size * 2,
+    distribution_size,
     width_size=128,
     depth=1,
-    key=dekey,
+    key=trkey,
 )
 model = SSM(vae=vae, tr=tr)
 

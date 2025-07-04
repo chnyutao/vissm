@@ -4,9 +4,11 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+from distrax import Categorical as Cat
 from distrax import MultivariateNormalDiag as MvNormal
 from jaxtyping import Array, PRNGKeyArray, PyTree
 
+from .gmvae import GMVAE
 from .vae import VAE
 
 
@@ -18,7 +20,7 @@ class SSM(eqx.Module):
     both for computing (transition) prior and posterior.
     """
 
-    vae: VAE
+    vae: GMVAE | VAE
     tr: Callable[[Array], Array]
 
     def __call__(
@@ -64,14 +66,23 @@ def loss_fn(
     sn_hat, dists = jax.vmap(model)(data, key=jr.split(key, batch_size))
     # reconstruction error
     reconst = jnp.sum((sn - sn_hat) ** 2, axis=range(1, len(sn.shape))).mean()
-    # gaussian kld(q(z|x) || p(z))
-    posteriors, priors = dists['posterior'], dists['prior']
-    if isinstance(model.vae, VAE):
-        kld = (
-            MvNormal(posteriors['mean'], posteriors['std'])
-            .kl_divergence(MvNormal(priors['mean'], priors['std']))
-            .mean()
-        )
+    # kld ( posetrior || prior )
+    posterior, prior = dists['posterior'], dists['prior']
+    if isinstance(model.vae, GMVAE):
+        # categorical kld
+        qy = Cat(posterior['logits'])
+        py = Cat(prior['logits'])
+        kld_cat = qy.kl_divergence(py)
+        # gaussian kld
+        qz = MvNormal(posterior['means'], posterior['stds'])
+        pz = MvNormal(prior['means'], prior['stds'])
+        qy = jnp.exp(posterior['logits'])
+        kld_gauss = (qy * qz.kl_divergence(pz)).sum(axis=-1)
+        kld = (kld_cat + kld_gauss).mean()
+    elif isinstance(model.vae, VAE):
+        qz = MvNormal(posterior['mean'], posterior['std'])
+        pz = MvNormal(prior['mean'], prior['std'])
+        kld = qz.kl_divergence(pz).mean()
     # return
     loss = reconst + kld
     return loss, {'loss': loss, 'reconst': reconst, 'kld': kld}

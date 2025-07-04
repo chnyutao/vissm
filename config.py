@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass
+from typing import Literal
 
 
 @dataclass
@@ -8,6 +9,9 @@ class Config:
 
     epochs: int = 10
     """Epochs."""
+
+    k: int = 2
+    """Number of components in Gaussianx mixture."""
 
     latent_size: int = 2
     """Latent Gaussian dimensionality."""
@@ -26,6 +30,12 @@ class Config:
 
     shuffle: bool = True
     """Dataset random shuffling."""
+
+    tau: float = 0.1
+    """Temperature for Gumbel-softmax sampling."""
+
+    vae: Literal['gmvae', 'vae'] = 'vae'
+    """Type of variational auto-encoder to use for state estimation."""
 
     def asdict(self) -> dict:
         return asdict(self)
