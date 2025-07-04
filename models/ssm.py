@@ -11,6 +11,13 @@ from .vae import VAE
 
 
 class SSM(eqx.Module):
+    """State-Space Model with Variation Inference.
+
+    *Note* that we have to ensure that the encoder and the transition NNs have the same
+    output dimensions, so that `self.vae.distributions` can be applied to the output of
+    both for computing (transition) prior and posterior.
+    """
+
     vae: VAE
     tr: Callable[[Array], Array]
 
@@ -20,20 +27,31 @@ class SSM(eqx.Module):
         *,
         key: PRNGKeyArray,
     ) -> tuple[Array, PyTree]:
+        """Forward a Markov transition through the state-space model.
+
+        Args:
+            data (`tuple[Array, Array, Array]`):
+                A 3-tuple containing the current state, action, and next state.
+            key (`PRNGKeyArray`): JAX random key.
+
+        Returns:
+            A 2-tuple containing the reconstructed next state, and a dictionary of
+            parameters of prior and postesrior distributions.
+        """
         dists = {}
-        s, a, sn = data
+        s, a, sn = data  # state, action, next_state
         key1, key2 = jr.split(key)
         # transition (prior)
         z, _ = self.vae.encode(s, key=key1)
-        mean, log_std = jnp.split(self.tr(jnp.concat((z, a))), 2)
-        dists['prior'] = (mean, jnp.exp(log_std))
+        dists['prior'] = self.vae.distribution(self.tr(jnp.concat([z, a])))
         # posterior
         zn, posterior = self.vae.encode(sn, key=key2)
         dists['posterior'] = posterior
         # return
-        return self.vae.decoder(zn), dists
+        return self.vae.decode(zn), dists
 
 
+@eqx.filter_value_and_grad(has_aux=True)
 def loss_fn(
     model: SSM,
     data: tuple[Array, Array, Array],
@@ -48,7 +66,12 @@ def loss_fn(
     reconst = jnp.sum((sn - sn_hat) ** 2, axis=range(1, len(sn.shape))).mean()
     # gaussian kld(q(z|x) || p(z))
     posteriors, priors = dists['posterior'], dists['prior']
-    kld = MvNormal(*posteriors).kl_divergence(MvNormal(*priors)).mean()
+    if isinstance(model.vae, VAE):
+        kld = (
+            MvNormal(posteriors['mean'], posteriors['std'])
+            .kl_divergence(MvNormal(priors['mean'], priors['std']))
+            .mean()
+        )
     # return
     loss = reconst + kld
     return loss, {'loss': loss, 'reconst': reconst, 'kld': kld}

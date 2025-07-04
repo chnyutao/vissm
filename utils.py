@@ -40,9 +40,7 @@ def train_step(
     Returns:
         A 2-tuple containing the updated model, the updated optimizer state.
     """
-    [_, metrics], grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(
-        model, batch, key=key
-    )
+    [_, metrics], grads = loss_fn(model, batch, key=key)
     updates, opt_state = opt.update(grads, opt_state)
     model = eqx.apply_updates(model, updates)
     jax.debug.callback(callback, metrics)
@@ -66,13 +64,13 @@ def eval_step(
     a = jax.nn.one_hot(0, num_classes=4)
     # computing prior & posteriors
     dists = {}
-    _, (z, _) = model.vae.encode(s[0], key=jr.key(0))
+    z, _ = model.vae.encode(s[0], key=jr.key(0))
     mean, log_std = jnp.split(model.tr(jnp.concat([z, a])), 2)
     dists['prior'] = (mean, jnp.exp(log_std))
     _, posterior = model.vae.encode(s[1], key=jr.key(0))
-    dists['posterior/1'] = posterior
+    dists['posterior/1'] = posterior.values()
     _, posterior = model.vae.encode(s[2], key=jr.key(0))
-    dists['posterior/2'] = posterior
+    dists['posterior/2'] = posterior.values()
     # plotting
     colors = dict(zip(dists.keys(), ['red', 'green', 'teal']))
     for key, (mean, std) in dists.items():

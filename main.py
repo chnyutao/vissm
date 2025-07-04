@@ -30,7 +30,7 @@ dataset = make_random_walks(
 # init model
 key, enkey, dekey = jr.split(key, 1 + 2)
 vae = VAE(
-    encoder=MLPEncoder(config.latent_size, key=enkey),
+    encoder=MLPEncoder(config.latent_size * 2, key=enkey),
     decoder=MLPDecoder(config.latent_size, key=dekey),
 )
 tr = eqx.nn.MLP(

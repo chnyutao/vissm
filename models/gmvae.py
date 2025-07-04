@@ -41,11 +41,10 @@ class GMVAE(eqx.Module):
             key (`PRNGKeyArray`): JAX random key.
 
         Returns:
-            A 2-tuple containing the latent variable z, and
-            the parameters of q(y|x) and q(z|x,y).
+            A 2-tuple containing the latent variable z, and the parameters of q(y,z|x).
         """
         key1, key2 = jr.split(key)
-        posterior = self.posterior(x)
+        posterior = self.distribution(self.encoder(x))
         # categorical posterior q(y|x)
         logits = posterior['logits']
         y = jax.nn.softmax((logits + jr.gumbel(key1, logits.shape)) / self.tau)
@@ -57,16 +56,16 @@ class GMVAE(eqx.Module):
         # return
         return z, posterior
 
-    def posterior(self, x: Array) -> Distribution:
-        """Compute the variational posterior q(y,z|x).
+    def distribution(self, embedding: Array) -> Distribution:
+        """Split latent embeddings into the parameters of p(y) and p(z|y).
 
         Args:
-            x (`Array`): Input array.
+            embedding (`Array`): Latent embeddings.
 
         Returns:
-            Parameters of q(y|x) and q(z|x,y).
+            Parameters of p(y) and p(z|y).
         """
-        logits, gaussian = jnp.split(self.encoder(x), [self.k])
+        logits, gaussian = jnp.split(embedding, [self.k])
         means, log_stds = jnp.split(gaussian, 2)
         return {
             'logits': jax.nn.log_softmax(logits),

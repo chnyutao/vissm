@@ -1,11 +1,15 @@
 from collections.abc import Callable
+from typing import TypedDict
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 import jax.random as jr
-from distrax import MultivariateNormalDiag as MvNormal
-from jaxtyping import Array, PRNGKeyArray, PyTree
+from jaxtyping import Array, PRNGKeyArray
+
+
+class Distribution(TypedDict):
+    mean: Array
+    std: Array
 
 
 class VAE(eqx.Module):
@@ -14,8 +18,19 @@ class VAE(eqx.Module):
     encoder: Callable[[Array], Array]
     decoder: Callable[[Array], Array]
 
-    def encode(self, x: Array, *, key: PRNGKeyArray) -> tuple[Array, PyTree]:
-        """Compute the variational posterior q(z|x).
+    def decode(self, z: Array) -> Array:
+        """Compute the likelihood p(x|z).
+
+        Args:
+            z (`Array`): Latent variable z.
+
+        Returns:
+            Parameters of p(x|z), also known as the reconstruction.
+        """
+        return self.decoder(z)
+
+    def encode(self, x: Array, *, key: PRNGKeyArray) -> tuple[Array, Distribution]:
+        """Compute the variational posterior q(z|x) and sample z ~ q(z|x).
 
         Args:
             x (`Array`): Input array.
@@ -24,38 +39,19 @@ class VAE(eqx.Module):
         Returns:
             A 2-tuple containing the latent variable z, and the parameters of q(z|x).
         """
-        mean, log_std = jnp.split(self.encoder(x), 2)
-        std = jnp.exp(log_std)
+        posterior = self.distribution(self.encoder(x))
+        mean, std = posterior['mean'], posterior['std']
         z = mean + std * jr.normal(key, std.shape)
-        return z, (mean, std)
+        return z, posterior
 
-    def __call__(self, x: Array, *, key: PRNGKeyArray) -> tuple[Array, PyTree]:
-        """Forward the input through the variational auto-encoder.
+    def distribution(self, embedding: Array) -> Distribution:
+        """Split latent embeddings into the parameters of p(z).
 
         Args:
-            x (Array): Input array.
-            key (PRNGKeyArray): JAX random key.
+            embedding (`Array`): Latent embeddings.
 
         Returns:
-            A 2-tuple containing the reconstructed input, and the parameters of
-            the posterior and prior distributions.
+            Parameters of p(z).
         """
-        z, posterior = self.encode(x, key=key)
-        return self.decoder(z), {
-            'posterior': posterior,
-            'prior': (jnp.zeros_like(z), jnp.ones_like(z)),
-        }
-
-
-def loss_fn(model: VAE, x: Array, *, key: PRNGKeyArray) -> tuple[Array, PyTree]:
-    """negative evidence lower bound (elbo)."""
-    batch_size = x.shape[0]
-    x_hat, dists = jax.vmap(model)(x, key=jr.split(key, batch_size))
-    # reconstruction error
-    reconst = jnp.sum((x - x_hat) ** 2, axis=range(1, len(x.shape))).mean()
-    # gaussian kld(q(z|x) || p(z))
-    posteriors, priors = dists['posterior'], dists['prior']
-    kld = MvNormal(*posteriors).kl_divergence(MvNormal(*priors)).mean()
-    # return
-    loss = reconst + kld
-    return loss, {'loss': loss, 'reconst': reconst, 'kld': kld}
+        mean, log_std = jnp.split(embedding, 2)
+        return {'mean': mean, 'std': jnp.exp(log_std)}

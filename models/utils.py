@@ -14,7 +14,7 @@ class MLPEncoder(eqx.Module):
         """Initializes the MLP encoder.
 
         Args:
-            latent_size (`int`): Latent Gaussian dimensionality.
+            latent_size (`int`): Latent dimensionality.
             key (`PRNGKeyArray`): JAX random key.
         """
         key1, key2, key3 = jr.split(key, 3)
@@ -24,7 +24,7 @@ class MLPEncoder(eqx.Module):
                 nn.Lambda(jax.nn.relu),
                 nn.Linear(256, 128, key=key2),
                 nn.Lambda(jax.nn.relu),
-                nn.Linear(128, latent_size * 2, key=key3),
+                nn.Linear(128, latent_size, key=key3),
             ]
         )
 
@@ -35,7 +35,7 @@ class MLPEncoder(eqx.Module):
             x (`Array`): Input array.
 
         Returns:
-            Encoded features of shape `(latent_size * 2,)`.
+            Encoded features of shape `(latent_size,)`.
         """
         return self.layers(x.ravel())
 
@@ -49,7 +49,7 @@ class MLPDecoder(eqx.Module):
         """Initializes the MLP decoder.
 
         Args:
-            latent_size (`int`): Latent Gaussian dimensionality.
+            latent_size (`int`): Latent dimensionality.
             key (`PRNGKeyArray`): JAX random key.
         """
         key1, key2, key3 = jr.split(key, 3)
