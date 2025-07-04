@@ -76,13 +76,22 @@ def loss_fn(
         # gaussian kld
         qz = MvNormal(posterior['means'], posterior['stds'])
         pz = MvNormal(prior['means'], prior['stds'])
-        qy = jnp.exp(posterior['logits'])
-        kld_gauss = (qy * qz.kl_divergence(pz)).sum(axis=-1)
+        kld_gauss = (qy.probs * qz.kl_divergence(pz)).sum(axis=-1)
         kld = (kld_cat + kld_gauss).mean()
     elif isinstance(model.vae, VAE):
         qz = MvNormal(posterior['mean'], posterior['std'])
         pz = MvNormal(prior['mean'], prior['std'])
         kld = qz.kl_divergence(pz).mean()
-    # return
+    # compute loss + metrics
     loss = reconst + kld
-    return loss, {'loss': loss, 'reconst': reconst, 'kld': kld}
+    if isinstance(model.vae, GMVAE):
+        metrics = {
+            'loss': loss,
+            'reconst': reconst,
+            'kld': kld,
+            'H(q(y))': qy.entropy(),
+            'H(p(y))': py.entropy(),
+        }
+    elif isinstance(model.vae, VAE):
+        metrics = {'loss': loss, 'reconst': reconst, 'kld': kld}
+    return loss, metrics
