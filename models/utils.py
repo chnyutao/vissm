@@ -5,6 +5,20 @@ import jax.random as jr
 from jaxtyping import Array, PRNGKeyArray
 
 
+class Transition(nn.MLP):
+    """Transition function."""
+
+    def __init__(self, in_size: int, out_size: int, *, key: PRNGKeyArray):
+        """Initialize the transition function.
+
+        Args:
+            in_size (`int`): Input size.
+            out_size (`int`): Output size.
+            key (`PRNGKeyArray`): JAX random key.
+        """
+        super().__init__(in_size, out_size, width_size=256, depth=1, key=key)
+
+
 class MLPEncoder(eqx.Module):
     """MLP Encoder for 64x64 images."""
 

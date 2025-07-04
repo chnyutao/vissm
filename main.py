@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 
 from config import Config
 from dataset import make_random_walks
-from models import GMVAE, SSM, VAE, MLPDecoder, MLPEncoder
+from models import GMVAE, SSM, VAE, MLPDecoder, MLPEncoder, Transition
 from utils import eval_step, train_step
 
 # configuration
@@ -28,29 +28,22 @@ dataset = make_random_walks(
 )
 
 # init model
-key, enkey, dekey, trkey = jr.split(key, 1 + 3)
+key, key1, key2, key3 = jr.split(key, 1 + 3)
 if config.vae == 'gmvae':
     distribution_size = config.k + config.k * config.latent_size * 2
     vae = GMVAE(
-        encoder=MLPEncoder(distribution_size, key=enkey),
-        decoder=MLPDecoder(config.latent_size, key=dekey),
+        encoder=MLPEncoder(distribution_size, key=key1),
+        decoder=MLPDecoder(config.latent_size, key=key2),
         k=config.k,
         tau=config.tau,
     )
 elif config.vae == 'vae':
     distribution_size = config.latent_size * 2
     vae = VAE(
-        encoder=MLPEncoder(config.latent_size * 2, key=enkey),
-        decoder=MLPDecoder(config.latent_size, key=dekey),
+        encoder=MLPEncoder(config.latent_size * 2, key=key1),
+        decoder=MLPDecoder(config.latent_size, key=key2),
     )
-tr = eqx.nn.MLP(
-    config.latent_size + 4,
-    distribution_size,
-    width_size=128,
-    depth=1,
-    key=trkey,
-)
-model = SSM(vae=vae, tr=tr)
+model = SSM(vae, tr=Transition(config.latent_size + 4, distribution_size, key=key3))
 
 # init optimizer
 opt = optax.adam(config.lr)
