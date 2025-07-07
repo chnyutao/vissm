@@ -57,4 +57,4 @@ for _ in tqdm(range(config.epochs)):
     for batch in dataset:
         key, subkey = jr.split(key)
         model, opt_state = train_step(model, batch, opt_state, key=subkey)
-eval_step(model)
+eval_step(model, key=key)

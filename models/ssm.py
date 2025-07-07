@@ -84,14 +84,14 @@ def loss_fn(
         kld = qz.kl_divergence(pz).mean()
     # compute loss + metrics
     loss = reconst + kld
+    metrics = {'loss': loss, 'reconst': reconst, 'kld': kld}
     if isinstance(model.vae, GMVAE):
-        metrics = {
-            'loss': loss,
-            'reconst': reconst,
-            'kld': kld,
-            'H(q(y))': qy.entropy(),
-            'H(p(y))': py.entropy(),
-        }
-    elif isinstance(model.vae, VAE):
-        metrics = {'loss': loss, 'reconst': reconst, 'kld': kld}
+        metrics.update(
+            {
+                'kld (categorical)': kld_cat.mean(),
+                'kld (gaussian)': kld_gauss.mean(),
+                'entropy (posterior)': qy.entropy().mean(),
+                'entropy (prior)': py.entropy().mean(),
+            }
+        )
     return loss, metrics

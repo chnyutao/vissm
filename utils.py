@@ -3,7 +3,6 @@ from collections.abc import Callable
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import jax.random as jr
 import matplotlib.pyplot as plt
 import optax
 import wandb
@@ -11,7 +10,7 @@ from distrax import MultivariateNormalDiag as MvNormal
 from jaxtyping import Array, PRNGKeyArray
 
 from dataset.random_walk import tr
-from models import SSM
+from models import GMVAE, SSM, VAE
 from models.ssm import loss_fn
 
 
@@ -50,12 +49,14 @@ def train_step(
 def eval_step(
     model: SSM,
     *,
+    key: PRNGKeyArray,
     callback: Callable[..., None] = lambda _: None,
 ) -> None:
     """Evaluate the model with visualizations and metrics.
 
     Args:
         model (`SSM`): The current model.
+        key (`PRNGKeyArray`): JAX random key.
         callback (`Callable[..., None]`, optional):
             Callback function for processing metrics. Default to `lambda _: None`.
     """
@@ -64,21 +65,36 @@ def eval_step(
     a = jax.nn.one_hot(0, num_classes=4)
     # computing prior & posteriors
     dists = {}
-    z, _ = model.vae.encode(s[0], key=jr.key(0))
-    mean, log_std = jnp.split(model.tr(jnp.concat([z, a])), 2)
-    dists['prior'] = (mean, jnp.exp(log_std))
-    _, posterior = model.vae.encode(s[1], key=jr.key(0))
-    dists['posterior/1'] = posterior.values()
-    _, posterior = model.vae.encode(s[2], key=jr.key(0))
-    dists['posterior/2'] = posterior.values()
+    z, _ = model.vae.encode(s[0], key=key)
+    dists['prior'] = model.vae.split(model.tr(jnp.concat([z, a])))
+    dists['posterior/1'] = model.vae.split(model.vae.encoder(s[1]))
+    dists['posterior/2'] = model.vae.split(model.vae.encoder(s[2]))
     # plotting
-    colors = dict(zip(dists.keys(), ['red', 'green', 'teal']))
-    for key, (mean, std) in dists.items():
-        x, y = jnp.unstack(jnp.linspace(mean - 3 * std, mean + 3 * std), axis=-1)
-        z = MvNormal(mean, std).prob(jnp.dstack(jnp.meshgrid(x, y)))
-        plt.contour(x, y, z, colors=colors[key], levels=3)
-        plt.plot([], [], color=colors[key], label=key)  # dummy label
+    colors = dict(zip(dists.keys(), ['darkorange', 'limegreen', 'teal']))
+    for key, dist in dists.items():
+        if isinstance(model.vae, GMVAE):
+            logits, means, stds = dist['logits'], dist['means'], dist['stds']
+            for i in range(means.shape[0]) if key == 'prior' else [logits.argmax()]:
+                plot_gaussian(means[i], stds[i], c=colors[key])
+            plt.plot([], [], color=colors[key], label=key)  # dummy label
+        elif isinstance(model.vae, VAE):
+            mean, std = dist.values()
+            plot_gaussian(mean, std, c=colors[key])
+            plt.plot([], [], color=colors[key], label=key)  # dummy label
     plt.legend()
     # callback
     metrics = {'distributions': wandb.Image(plt)}
     jax.debug.callback(callback, metrics)
+
+
+def plot_gaussian(mean: Array, std: Array, *, c: str) -> None:
+    """Plot a Gaussian contour.
+
+    Args:
+        mean (`Array`): The mean of the Gaussian distribution.
+        std (`Array`): The standard deviation of the Gaussian distribution.
+        c (`str`): The color of the contour plot.
+    """
+    x, y = jnp.unstack(jnp.linspace(mean - 3 * std, mean + 3 * std), axis=-1)
+    z = MvNormal(mean, std).prob(jnp.dstack(jnp.meshgrid(x, y)))
+    plt.contour(x, y, z, colors=c, levels=3)
