@@ -40,7 +40,7 @@ if config.vae == 'gmvae':
 elif config.vae == 'vae':
     distribution_size = config.latent_size * 2
     vae = VAE(
-        encoder=MLPEncoder(config.latent_size * 2, key=key1),
+        encoder=MLPEncoder(distribution_size, key=key1),
         decoder=MLPDecoder(config.latent_size, key=key2),
     )
 model = SSM(vae, tr=Transition(config.latent_size + 4, distribution_size, key=key3))

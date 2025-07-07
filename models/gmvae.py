@@ -44,7 +44,7 @@ class GMVAE(eqx.Module):
             A 2-tuple containing the latent variable z, and the parameters of q(y,z|x).
         """
         key1, key2 = jr.split(key)
-        posterior = self.distribution(self.encoder(x))
+        posterior = self.split(self.encoder(x))
         # categorical posterior q(y|x)
         logits = posterior['logits']
         y = jax.nn.softmax((logits + jr.gumbel(key1, logits.shape)) / self.tau)
@@ -56,11 +56,11 @@ class GMVAE(eqx.Module):
         # return
         return z, posterior
 
-    def distribution(self, embedding: Array) -> Distribution:
-        """Split latent embeddings into the parameters of p(y) and p(z|y).
+    def split(self, embedding: Array) -> Distribution:
+        """Split encoder embeddings into the parameters of p(y) and p(z|y).
 
         Args:
-            embedding (`Array`): Latent embeddings.
+            embedding (`Array`): Encoder embeddings.
 
         Returns:
             Parameters of p(y) and p(z|y).

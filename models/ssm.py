@@ -15,8 +15,8 @@ from .vae import VAE
 class SSM(eqx.Module):
     """State-Space Model with Variation Inference.
 
-    *Note* that we have to ensure that the encoder and the transition NNs have the same
-    output dimensions, so that `self.vae.distributions` can be applied to the output of
+    *Note* that one need to ensure that the encoder and transition neural networks have
+    the same output dimensions, so that `self.vae.split` can be applied to the output of
     both for computing (transition) prior and posterior.
     """
 
@@ -45,7 +45,7 @@ class SSM(eqx.Module):
         key1, key2 = jr.split(key)
         # transition (prior)
         z, _ = self.vae.encode(s, key=key1)
-        dists['prior'] = self.vae.distribution(self.tr(jnp.concat([z, a])))
+        dists['prior'] = self.vae.split(self.tr(jnp.concat([z, a])))
         # posterior
         zn, posterior = self.vae.encode(sn, key=key2)
         dists['posterior'] = posterior

@@ -39,16 +39,16 @@ class VAE(eqx.Module):
         Returns:
             A 2-tuple containing the latent variable z, and the parameters of q(z|x).
         """
-        posterior = self.distribution(self.encoder(x))
+        posterior = self.split(self.encoder(x))
         mean, std = posterior['mean'], posterior['std']
         z = mean + std * jr.normal(key, std.shape)
         return z, posterior
 
-    def distribution(self, embedding: Array) -> Distribution:
-        """Split latent embeddings into the parameters of p(z).
+    def split(self, embedding: Array) -> Distribution:
+        """Split encoder embeddings into the parameters of p(z).
 
         Args:
-            embedding (`Array`): Latent embeddings.
+            embedding (`Array`): Encoder embeddings.
 
         Returns:
             Parameters of p(z).
