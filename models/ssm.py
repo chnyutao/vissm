@@ -76,7 +76,7 @@ def loss_fn(
         # gaussian kld
         qz = MvNormal(posterior['means'], posterior['stds'])
         pz = MvNormal(prior['means'], prior['stds'])
-        kld_gauss = (qy.probs * qz.kl_divergence(pz)).sum(axis=-1)
+        kld_gauss = (jnp.exp(qy.logits) * qz.kl_divergence(pz)).sum(axis=-1)
         kld = (kld_cat + kld_gauss).mean()
     elif isinstance(model.vae, VAE):
         qz = MvNormal(posterior['mean'], posterior['std'])
