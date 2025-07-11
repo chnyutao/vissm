@@ -76,7 +76,8 @@ def eval_step(
             logits, means, stds = dist['logits'], dist['means'], dist['stds']
             for i in range(means.shape[0]) if key == 'prior' else [logits.argmax()]:
                 plot_gaussian(means[i], stds[i], c=colors[key])
-            plt.plot([], [], color=colors[key], label=key)  # dummy label
+                label = f'{key} (p={jnp.exp(logits[i]):.2f})'
+                plt.plot([], [], color=colors[key], label=label)  # dummy label
         elif isinstance(model.vae, VAE):
             mean, std = dist.values()
             plot_gaussian(mean, std, c=colors[key])
