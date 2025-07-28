@@ -70,6 +70,7 @@ def eval_step(
     dists['posterior/1'] = model.vae.split(model.vae.encoder(s[1]))
     dists['posterior/2'] = model.vae.split(model.vae.encoder(s[2]))
     # plotting
+    plt.clf()
     colors = dict(zip(dists.keys(), ['darkorange', 'limegreen', 'teal']))
     for key, dist in dists.items():
         if isinstance(model.vae, GMVAE):

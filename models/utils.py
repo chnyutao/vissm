@@ -25,7 +25,7 @@ class MLPEncoder(eqx.Module):
     layers: nn.Sequential
 
     def __init__(self, latent_size: int, *, key: PRNGKeyArray):
-        """Initializes the MLP encoder.
+        """Initialize the MLP encoder.
 
         Args:
             latent_size (`int`): Latent dimensionality.
@@ -60,7 +60,7 @@ class MLPDecoder(eqx.Module):
     layers: nn.Sequential
 
     def __init__(self, latent_size: int, *, key: PRNGKeyArray):
-        """Initializes the MLP decoder.
+        """Initialize the MLP decoder.
 
         Args:
             latent_size (`int`): Latent dimensionality.

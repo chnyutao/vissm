@@ -15,7 +15,7 @@ from utils import eval_step, train_step
 # configuration
 config = tyro.cli(Config)
 key = jr.key(config.seed)
-wandb.init(project='random-walk', config=config.asdict())
+wandb.init(project='vissm', config=config.asdict())
 
 # init dataset
 key, subkey = jr.split(key)
@@ -57,4 +57,6 @@ for _ in tqdm(range(config.epochs)):
     for batch in dataset:
         key, subkey = jr.split(key)
         model, opt_state = train_step(model, batch, opt_state, key=subkey)
-eval_step(model, key=key)
+    # eval
+    key, subkey = jr.split(key)
+    eval_step(model, key=subkey)

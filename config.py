@@ -7,7 +7,7 @@ class Config:
     batch_size: int = 64
     """Batch size."""
 
-    epochs: int = 10
+    epochs: int = 100
     """Epochs."""
 
     k: int = 2
