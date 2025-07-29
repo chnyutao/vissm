@@ -1071,7 +1071,7 @@ wheels = [
 
 [[package]]
 name = "tyro"
-version = "0.9.25"
+version = "0.9.26"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
@@ -1081,9 +1081,9 @@ dependencies = [
     { name = "typeguard" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/12/9c/43ce0655116b6fffd15edca6104c9d3a63e286b2bca89decdba6a44c615b/tyro-0.9.25.tar.gz", hash = "sha256:8a26b7b4a7c3a384633ce958ed54a2c9086948ce7ee731ca224fd26d27a88682", size = 305795, upload-time = "2025-06-30T09:09:50.232Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b6/1d/61cfef825dcdefbc0fe6f40d7f692278ebaedcbc1ffbf736fc9e4f7d13a6/tyro-0.9.26.tar.gz", hash = "sha256:cd7b4facca2266cfc2b12cb2f7c3c261baa2763e5c693f56aa9654fb58253b5b", size = 306902, upload-time = "2025-07-01T16:34:13.585Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/cd/86d94a0f20dbff75754591454eba8cc31d2aee1341c11ca0f9a40bfd5c79/tyro-0.9.25-py3-none-any.whl", hash = "sha256:6d4a9d3b37d3ff9cc23b3895428cbf13976f6da24f2d4458215db7cf707f2a6a", size = 128997, upload-time = "2025-06-30T09:09:48.725Z" },
+    { url = "https://files.pythonhosted.org/packages/01/83/704823e9fbd6d0cb3f67e6a0f3ff5c357610561e170f3ae84dc3a6e697cf/tyro-0.9.26-py3-none-any.whl", hash = "sha256:af04702ca3a67e8193388897fc524f3f357285b86bdfa2e05606adc53199e564", size = 128982, upload-time = "2025-07-01T16:34:11.941Z" },
 ]
 
 [[package]]
@@ -1110,8 +1110,10 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
-utils = [
+plot = [
     { name = "matplotlib" },
+]
+utils = [
     { name = "tqdm" },
     { name = "tyro" },
     { name = "wandb" },
@@ -1129,10 +1131,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+plot = [{ name = "matplotlib", specifier = ">=3.10.3" }]
 utils = [
-    { name = "matplotlib", specifier = ">=3.10.3" },
     { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "tyro", specifier = ">=0.9.25" },
+    { name = "tyro", specifier = ">=0.9.26" },
     { name = "wandb", specifier = ">=0.20.1" },
 ]
 

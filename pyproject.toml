@@ -15,12 +15,14 @@ dependencies = [
 ]
 
 [dependency-groups]
-utils = [
+plot = [
     "matplotlib>=3.10.3",
+]
+utils = [
     "tqdm>=4.67.1",
-    "tyro>=0.9.25",
+    "tyro>=0.9.26",
     "wandb>=0.20.1",
 ]
 
 [tool.uv]
-default-groups = ["utils"]
+default-groups = ["plot", "utils"]

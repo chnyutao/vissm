@@ -6,9 +6,9 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import optax
 import wandb
-from distrax import MultivariateNormalDiag as MvNormal
 from jaxtyping import Array, PRNGKeyArray
 
+import plots
 from dataset.random_walk import tr
 from models import GMVAE, SSM, VAE
 from models.ssm import loss_fn
@@ -71,32 +71,12 @@ def eval_step(
     dists['posterior/2'] = model.vae.split(model.vae.encoder(s[2]))
     # plotting
     plt.clf()
-    colors = dict(zip(dists.keys(), ['darkorange', 'limegreen', 'teal']))
     for key, dist in dists.items():
-        if isinstance(model.vae, GMVAE):
-            logits, means, stds = dist['logits'], dist['means'], dist['stds']
-            for i in range(means.shape[0]) if key == 'prior' else [logits.argmax()]:
-                plot_gaussian(means[i], stds[i], c=colors[key])
-                label = f'{key} (p={jnp.exp(logits[i]):.2f})'
-                plt.plot([], [], color=colors[key], label=label)  # dummy label
-        elif isinstance(model.vae, VAE):
-            mean, std = dist.values()
-            plot_gaussian(mean, std, c=colors[key])
-            plt.plot([], [], color=colors[key], label=key)  # dummy label
-    plt.legend()
+        mean, std = dist.values()
+        if key == 'prior':
+            plots.heatmap(mean, std)
+        else:
+            plots.contour(mean, std, label=str(key))
     # callback
     metrics = {'distributions': wandb.Image(plt)}
     jax.debug.callback(callback, metrics)
-
-
-def plot_gaussian(mean: Array, std: Array, *, c: str) -> None:
-    """Plot a Gaussian contour.
-
-    Args:
-        mean (`Array`): The mean of the Gaussian distribution.
-        std (`Array`): The standard deviation of the Gaussian distribution.
-        c (`str`): The color of the contour plot.
-    """
-    x, y = jnp.unstack(jnp.linspace(mean - 3 * std, mean + 3 * std), axis=-1)
-    z = MvNormal(mean, std).prob(jnp.dstack(jnp.meshgrid(x, y)))
-    plt.contour(x, y, z, colors=c, levels=3)

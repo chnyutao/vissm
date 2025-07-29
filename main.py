@@ -60,3 +60,4 @@ for _ in tqdm(range(config.epochs)):
     # eval
     key, subkey = jr.split(key)
     eval_step(model, key=subkey)
+eval_step(model, key=key)
