@@ -10,7 +10,7 @@ from jaxtyping import Array, PRNGKeyArray
 
 import plots
 from dataset.random_walk import tr
-from models import GMVAE, SSM, VAE
+from models import SSM
 from models.ssm import loss_fn
 
 
@@ -71,12 +71,14 @@ def eval_step(
     dists['posterior/2'] = model.vae.split(model.vae.encoder(s[2]))
     # plotting
     plt.clf()
-    for key, dist in dists.items():
-        mean, std = dist.values()
-        if key == 'prior':
-            plots.heatmap(mean, std)
-        else:
-            plots.contour(mean, std, label=str(key))
+    fig, axes = plots.make_distribution_map(scale=1.5)
+    plots.heatmap(fig, axes, dists['prior'])
+    plots.marginal(fig, axes, dists['prior'], color='tab:gray')
+    plots.marginal(fig, axes, dists['posterior/1'], color='orange')
+    plots.marginal(fig, axes, dists['posterior/2'], color='gold')
+    plots.contour(fig, axes, dists['posterior/1'], color='orange', label='posterior/1')
+    plots.contour(fig, axes, dists['posterior/2'], color='gold', label='posterior/2')
     # callback
     metrics = {'distributions': wandb.Image(plt)}
     jax.debug.callback(callback, metrics)
+    plt.close(fig)
