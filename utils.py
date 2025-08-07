@@ -8,9 +8,10 @@ import optax
 import wandb
 from jaxtyping import Array, PRNGKeyArray
 
+from models.distributions import GaussianMixture
 import plots
 from dataset.random_walk import tr
-from models import GMVAE, SSM, VAE
+from models import SSM
 from models.ssm import loss_fn
 
 
@@ -71,12 +72,20 @@ def eval_step(
     dists['posterior/2'] = model.vae.split(model.vae.encoder(s[2]))
     # plotting
     plt.clf()
-    for key, dist in dists.items():
-        mean, std = dist.values()
-        if key == 'prior':
-            plots.heatmap(mean, std)
-        else:
-            plots.contour(mean, std, label=str(key))
+    fig, axes = plots.make_distribution_map()
+    plots.heatmap(fig, axes, dists['prior'])
+    for label, kwds in [
+        ('posterior/1', {'alpha': 0.4, 'color': 'darkorange'}),
+        ('posterior/2', {'alpha': 0.8, 'color': 'lavender'}),
+        ('prior', {'alpha': 0.2, 'color': 'black', 'hatch': '///'}),
+    ]:
+        plots.marginal(fig, axes, dists[label], label=label, **kwds)
+    for label, kwds in [
+        ('posterior/1', {'c': 'darkorange'}),
+        ('posterior/2', {'c': 'lavender'}),
+    ]:
+        plots.mean(fig, axes, dists[label], **kwds)
     # callback
     metrics = {'distributions': wandb.Image(plt)}
     jax.debug.callback(callback, metrics)
+    plt.close(fig)
