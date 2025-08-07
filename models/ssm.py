@@ -8,6 +8,7 @@ from distrax import Categorical as Cat
 from distrax import MultivariateNormalDiag as MvNormal
 from jaxtyping import Array, PRNGKeyArray, PyTree
 
+from .distributions import Distribution, Gaussian, GaussianMixture
 from .gmvae import GMVAE
 from .vae import VAE
 
@@ -28,7 +29,7 @@ class SSM(eqx.Module):
         data: tuple[Array, Array, Array],
         *,
         key: PRNGKeyArray,
-    ) -> tuple[Array, PyTree]:
+    ) -> tuple[Array, dict[str, Distribution]]:
         """Forward a Markov transition through the state-space model.
 
         Args:
@@ -68,20 +69,21 @@ def loss_fn(
     reconst = jnp.sum((sn - sn_hat) ** 2, axis=range(1, len(sn.shape))).mean()
     # kld ( posetrior || prior )
     posterior, prior = dists['posterior'], dists['prior']
-    if isinstance(model.vae, GMVAE):
-        # categorical kld
-        qy = Cat(posterior['logits'])
-        py = Cat(prior['logits'])
-        kld_cat = qy.kl_divergence(py)
-        # gaussian kld
-        qz = MvNormal(posterior['means'], posterior['stds'])
-        pz = MvNormal(prior['means'], prior['stds'])
-        kld_gauss = (jnp.exp(qy.logits) * qz.kl_divergence(pz)).sum(axis=-1)
-        kld = (kld_cat + kld_gauss).mean()
-    elif isinstance(model.vae, VAE):
-        qz = MvNormal(posterior['mean'], posterior['std'])
-        pz = MvNormal(prior['mean'], prior['std'])
-        kld = qz.kl_divergence(pz).mean()
+    match (posterior, prior):
+        case Gaussian(), Gaussian():
+            qz = MvNormal(posterior.mean, posterior.std)
+            pz = MvNormal(prior.mean, prior.std)
+            kld = qz.kl_divergence(pz).mean()
+        case GaussianMixture(), GaussianMixture():
+            # categorical kld
+            qy = Cat(posterior.logits)
+            py = Cat(prior.logits)
+            kld_cat = qy.kl_divergence(py)
+            # gaussian kld
+            qz = MvNormal(posterior.means, posterior.stds)
+            pz = MvNormal(prior.means, prior.stds)
+            kld_gauss = (jnp.exp(qy.logits) * qz.kl_divergence(pz)).sum(axis=-1)
+            kld = (kld_cat + kld_gauss).mean()
     # compute loss + metrics
     loss = reconst + kld
     metrics = {'loss': loss, 'reconst': reconst, 'kld': kld}

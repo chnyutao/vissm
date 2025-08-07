@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from typing import TypedDict
 
 import equinox as eqx
 import jax
@@ -7,11 +6,7 @@ import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, PRNGKeyArray
 
-
-class Distribution(TypedDict):
-    logits: Array
-    means: Array
-    stds: Array
+from .distributions import GaussianMixture
 
 
 class GMVAE(eqx.Module):
@@ -33,7 +28,7 @@ class GMVAE(eqx.Module):
         """
         return self.decoder(z)
 
-    def encode(self, x: Array, *, key: PRNGKeyArray) -> tuple[Array, Distribution]:
+    def encode(self, x: Array, *, key: PRNGKeyArray) -> tuple[Array, GaussianMixture]:
         """Compute the variational posterior q(y,z|x) and sample z ~ q(z|x,y).
 
         Args:
@@ -46,17 +41,17 @@ class GMVAE(eqx.Module):
         key1, key2 = jr.split(key)
         posterior = self.split(self.encoder(x))
         # categorical posterior q(y|x)
-        logits = posterior['logits']
+        logits = posterior.logits
         y = jax.nn.softmax((logits + jr.gumbel(key1, logits.shape)) / self.tau)
         # gaussian posterior q(z|x,y)
-        means, stds = posterior['means'], posterior['stds']
+        means, stds = posterior.means, posterior.stds
         mean = jnp.einsum('k,kn->n', y, means)
         std = jnp.einsum('k,kn->n', y, stds)
         z = mean + std * jr.normal(key2, std.shape)
         # return
         return z, posterior
 
-    def split(self, embedding: Array) -> Distribution:
+    def split(self, embedding: Array) -> GaussianMixture:
         """Split encoder embeddings into the parameters of p(y) and p(z|y).
 
         Args:
@@ -67,8 +62,8 @@ class GMVAE(eqx.Module):
         """
         logits, gaussian = jnp.split(embedding, [self.k])
         means, log_stds = jnp.split(gaussian, 2)
-        return {
-            'logits': jax.nn.log_softmax(logits),
-            'means': means.reshape(*logits.shape, -1),
-            'stds': jnp.exp(log_stds).reshape(*logits.shape, -1),
-        }
+        return GaussianMixture(
+            logits=jax.nn.log_softmax(logits),
+            means=means.reshape(*logits.shape, -1),
+            stds=jnp.exp(log_stds).reshape(*logits.shape, -1),
+        )

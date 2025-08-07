@@ -1,15 +1,11 @@
 from collections.abc import Callable
-from typing import TypedDict
 
 import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, PRNGKeyArray
 
-
-class Distribution(TypedDict):
-    mean: Array
-    std: Array
+from .distributions import Gaussian
 
 
 class VAE(eqx.Module):
@@ -29,7 +25,7 @@ class VAE(eqx.Module):
         """
         return self.decoder(z)
 
-    def encode(self, x: Array, *, key: PRNGKeyArray) -> tuple[Array, Distribution]:
+    def encode(self, x: Array, *, key: PRNGKeyArray) -> tuple[Array, Gaussian]:
         """Compute the variational posterior q(z|x) and sample z ~ q(z|x).
 
         Args:
@@ -40,11 +36,11 @@ class VAE(eqx.Module):
             A 2-tuple containing the latent variable z, and the parameters of q(z|x).
         """
         posterior = self.split(self.encoder(x))
-        mean, std = posterior['mean'], posterior['std']
+        mean, std = posterior.mean, posterior.std
         z = mean + std * jr.normal(key, std.shape)
         return z, posterior
 
-    def split(self, embedding: Array) -> Distribution:
+    def split(self, embedding: Array) -> Gaussian:
         """Split encoder embeddings into the parameters of p(z).
 
         Args:
@@ -54,4 +50,4 @@ class VAE(eqx.Module):
             Parameters of p(z).
         """
         mean, log_std = jnp.split(embedding, 2)
-        return {'mean': mean, 'std': jnp.exp(log_std)}
+        return Gaussian(mean=mean, std=jnp.exp(log_std))
