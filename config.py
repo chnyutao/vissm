@@ -4,6 +4,9 @@ from typing import Literal
 
 @dataclass
 class Config:
+    activation: str = 'relu'
+    """The activation function (in `jax.nn.*`)."""
+
     batch_size: int = 64
     """Batch size."""
 

@@ -1,6 +1,7 @@
 from functools import partial
 
 import equinox as eqx
+import jax
 import jax.random as jr
 import optax
 import tyro
@@ -29,21 +30,30 @@ dataset = make_random_walks(
 
 # init model
 key, key1, key2, key3 = jr.split(key, 1 + 3)
+activation = getattr(jax.nn, config.activation)
 if config.vae == 'gmvae':
     distribution_size = config.k + config.k * config.latent_size * 2
     vae = GMVAE(
-        encoder=MLPEncoder(distribution_size, key=key1),
-        decoder=MLPDecoder(config.latent_size, key=key2),
+        encoder=MLPEncoder(distribution_size, key=key1, activation=activation),
+        decoder=MLPDecoder(config.latent_size, key=key2, activation=activation),
         k=config.k,
         tau=config.tau,
     )
 elif config.vae == 'vae':
     distribution_size = config.latent_size * 2
     vae = VAE(
-        encoder=MLPEncoder(distribution_size, key=key1),
-        decoder=MLPDecoder(config.latent_size, key=key2),
+        encoder=MLPEncoder(distribution_size, key=key1, activation=activation),
+        decoder=MLPDecoder(config.latent_size, key=key2, activation=activation),
     )
-model = SSM(vae, tr=Transition(config.latent_size + 4, distribution_size, key=key3))
+model = SSM(
+    vae,
+    tr=Transition(
+        config.latent_size + 4,
+        distribution_size,
+        key=key3,
+        activation=activation,
+    ),
+)
 
 # init optimizer
 opt = optax.adam(config.lr)
