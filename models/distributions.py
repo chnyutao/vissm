@@ -11,14 +11,6 @@ class Gaussian(eqx.Module):
     mean: Array
     std: Array
 
-    def dist(self) -> MvNormal:
-        """Cast to a `distrax.MultivariateNormalDiag`.
-
-        Returns:
-            A `distrax.MultivariateNormalDiag` distribution.
-        """
-        return MvNormal(self.mean, self.std)
-
     def density(self, lo: Array, hi: Array) -> tuple[Array, ...]:
         """Compute the probability density over a given range.
 
@@ -31,7 +23,7 @@ class Gaussian(eqx.Module):
             the probability density values at each point on the grid.
         """
         xy = jnp.unstack(jnp.linspace(lo, hi, num=100), axis=-1)
-        z = self.dist().prob(jnp.dstack(jnp.meshgrid(*xy)))
+        z = self.to().prob(jnp.dstack(jnp.meshgrid(*xy)))
         assert isinstance(z, Array)
         return (*xy, z)
 
@@ -52,6 +44,14 @@ class Gaussian(eqx.Module):
         assert isinstance(y, Array)
         return x, y
 
+    def to(self) -> MvNormal:
+        """Cast to a `distrax.MultivariateNormalDiag`.
+
+        Returns:
+            A `distrax.MultivariateNormalDiag` distribution.
+        """
+        return MvNormal(self.mean, self.std)
+
 
 class GaussianMixture(eqx.Module):
     """Mixture of Gaussians distribution parameters."""
@@ -59,17 +59,6 @@ class GaussianMixture(eqx.Module):
     logits: Array
     means: Array
     stds: Array
-
-    def dist(self) -> MixtureSameFamily:
-        """Cast to a `distrax.MixtureSameFamily`.
-
-        Returns:
-            A `distrax.MixtureSameFamily` distribution.
-        """
-        return MixtureSameFamily(
-            mixture_distribution=Categorical(self.logits),
-            components_distribution=MvNormal(self.means, self.stds),
-        )
 
     def density(self, lo: Array, hi: Array) -> tuple[Array, ...]:
         """Compute the probability density over a given range.
@@ -83,7 +72,7 @@ class GaussianMixture(eqx.Module):
             the probability density values at each point on the grid.
         """
         xy = jnp.unstack(jnp.linspace(lo, hi, num=100), axis=-1)
-        z = self.dist().prob(jnp.dstack(jnp.meshgrid(*xy)))
+        z = self.to().prob(jnp.dstack(jnp.meshgrid(*xy)))
         assert isinstance(z, Array)
         return (*xy, z)
 
@@ -106,6 +95,17 @@ class GaussianMixture(eqx.Module):
         ).prob(x)
         assert isinstance(y, Array)
         return x, y
+
+    def to(self) -> MixtureSameFamily:
+        """Cast to a `distrax.MixtureSameFamily`.
+
+        Returns:
+            A `distrax.MixtureSameFamily` distribution.
+        """
+        return MixtureSameFamily(
+            mixture_distribution=Categorical(self.logits),
+            components_distribution=MvNormal(self.means, self.stds),
+        )
 
 
 Distribution = Gaussian | GaussianMixture

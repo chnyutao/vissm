@@ -4,7 +4,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-from distrax import Categorical as Cat
+from distrax import Categorical
 from distrax import MultivariateNormalDiag as MvNormal
 from jaxtyping import Array, PRNGKeyArray, PyTree
 
@@ -48,8 +48,7 @@ class SSM(eqx.Module):
         z, _ = self.vae.encode(s, key=key1)
         dists['prior'] = self.vae.split(self.tr(jnp.concat([z, a])))
         # posterior
-        zn, posterior = self.vae.encode(sn, key=key2)
-        dists['posterior'] = posterior
+        zn, dists['posterior'] = self.vae.encode(sn, key=key2)
         # return
         return self.vae.decode(zn), dists
 
@@ -62,38 +61,34 @@ def loss_fn(
     key: PRNGKeyArray,
 ) -> tuple[Array, PyTree]:
     """negative evidence lower bound (elbo)."""
-    _, _, sn = data
-    batch_size = sn.shape[0]
-    sn_hat, dists = jax.vmap(model)(data, key=jr.split(key, batch_size))
+    x, batch_size = data[-1], data[0].shape[0]
+    x_hat, dists = jax.vmap(model)(data, key=jr.split(key, batch_size))
     # reconstruction error
-    reconst = jnp.sum((sn - sn_hat) ** 2, axis=range(1, len(sn.shape))).mean()
+    reconst = jnp.sum((x - x_hat) ** 2, axis=range(1, len(x.shape))).mean()
     # kld ( posetrior || prior )
     posterior, prior = dists['posterior'], dists['prior']
-    match (posterior, prior):
-        case Gaussian(), Gaussian():
-            qz = MvNormal(posterior.mean, posterior.std)
-            pz = MvNormal(prior.mean, prior.std)
-            kld = qz.kl_divergence(pz).mean()
-        case GaussianMixture(), GaussianMixture():
-            # categorical kld
-            qy = Cat(posterior.logits)
-            py = Cat(prior.logits)
-            kld_cat = qy.kl_divergence(py)
-            # gaussian kld
-            qz = MvNormal(posterior.means, posterior.stds)
-            pz = MvNormal(prior.means, prior.stds)
-            kld_gauss = (jnp.exp(qy.logits) * qz.kl_divergence(pz)).sum(axis=-1)
-            kld = (kld_cat + kld_gauss).mean()
+    if isinstance(posterior, Gaussian) and isinstance(prior, Gaussian):
+        qz, pz = prior.to(), posterior.to()
+        kld = pz.kl_divergence(qz).mean()
+    if isinstance(posterior, GaussianMixture) and isinstance(prior, GaussianMixture):
+        # categorical kld
+        qy, py = Categorical(posterior.logits), Categorical(prior.logits)
+        kld_cat = qy.kl_divergence(py)
+        # gaussian kld
+        qz = MvNormal(posterior.means, posterior.stds)
+        pz = MvNormal(prior.means, prior.stds)
+        kld_gauss = (jnp.exp(qy.logits) * qz.kl_divergence(pz)).sum(axis=-1)
+        kld = (kld_cat + kld_gauss).mean()
     # compute loss + metrics
     loss = reconst + kld
-    metrics = {'loss': loss, 'reconst': reconst, 'kld': kld}
-    if isinstance(model.vae, GMVAE):
-        metrics.update(
-            {
-                'kld (categorical)': kld_cat.mean(),
-                'kld (gaussian)': kld_gauss.mean(),
-                'entropy (posterior)': qy.entropy().mean(),
-                'entropy (prior)': py.entropy().mean(),
-            }
-        )
+    metrics = {'train/loss': loss, 'train/reconst': reconst, 'train/kld': kld}
+    if isinstance(posterior, Gaussian) and isinstance(prior, Gaussian):
+        pass
+    if isinstance(posterior, GaussianMixture) and isinstance(prior, GaussianMixture):
+        metrics = metrics | {
+            'train/kld-cat': kld_cat.mean(),
+            'train/kld-gauss': kld_gauss.mean(),
+            'train/ent-qy': qy.entropy().mean(),
+            'train/ent-py': py.entropy().mean(),
+        }
     return loss, metrics

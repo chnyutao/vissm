@@ -137,7 +137,7 @@ def mean(
         **kwds (`Any`): Extra keyword arguments for `ax.scatter`.
     """
     # data
-    mean = dist.dist().mean()
+    mean = dist.to().mean()
     assert isinstance(mean, Array)
     x, y = mean
     # connection patch
@@ -156,3 +156,42 @@ def mean(
         s=fig.get_figwidth() * 10,
         **kwds,
     )
+
+
+def make_distribution_bars() -> tuple[Figure, Axes]:
+    """Initialize a distribution bar plot.
+
+    Returns:
+        A 2-tuple containing the figure and an axes.
+    """
+    scale = 1.0
+    fig, axes = plt.subplots(figsize=(4 * scale, 3 * scale), layout='constrained')
+    return fig, axes
+
+
+def bars(fig: Figure, axes: Axes, dist: Distribution, **kwds: Any) -> None:
+    """Plot the logits of a given distribution as bars.
+
+    Args:
+        fig (`Figure`): A matplotlib figure.
+        axes (`dict[str, Axes]`): A dictionary of matplotlib axes.
+        dist (`Distribution`): The given distribution.
+            See `models.distributions.Distribution`.
+        **kwds (`Any`): Extra keyword arguments for `ax.barh`.
+    """
+    # data
+    if isinstance(dist, Gaussian):
+        return
+    if isinstance(dist, GaussianMixture):
+        probs = jnp.exp(dist.logits)
+    # bars
+    if axes.get_yticks().dtype == float:
+        axes.set_yticks([])  # clear default ticks
+    ys = jnp.arange(len(probs)) + len(axes.get_yticks())
+    axes.barh(ys, probs, align='center', **kwds)
+    axes.set_xticks([0, 0.5, 1])
+    axes.set_yticks([*axes.get_yticks(), *ys])
+    axes.set_yticklabels([f'${i % len(probs)}$' for i in range(len(axes.get_yticks()))])
+    axes.set_xlabel('$\\mathrm{Pr}(y)$')
+    axes.set_ylabel('$y$')
+    axes.legend(fontsize='small')
