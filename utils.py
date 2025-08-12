@@ -3,6 +3,7 @@ from collections.abc import Callable
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import jax.random as jr
 import matplotlib.pyplot as plt
 import optax
 import wandb
@@ -95,11 +96,20 @@ def eval_step(
         ('posterior/2', {'alpha': 0.8, 'color': 'lavender'}),
         ('prior', {'alpha': 0.2, 'color': 'black', 'hatch': '///'}),
     ]:
-        bars.barh(dists[label], label=label, **kwds)
+        bars.show(dists[label], label=label, **kwds)
+    # grids
+    dists = (
+        model.vae.encode(s[i, j], key=jr.key(0))[-1]
+        for i in range(s.shape[0])
+        for j in range(s.shape[1])
+    )
+    grids = plots.Grids()
+    grids.show(dists, shape=s.shape[:2])
     # callback
     metrics = {
         'eval/heatmap': wandb.Image(heatmap.fig),
         'eval/bars': wandb.Image(bars.fig),
+        'eval/grids': wandb.Image(grids.fig),
     }
     jax.debug.callback(callback, metrics)
     plt.close('all')

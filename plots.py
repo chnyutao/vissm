@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from typing import Any
 
 import jax.numpy as jnp
@@ -153,7 +154,7 @@ class Bars:
             layout='constrained',
         )
 
-    def barh(self, dist: Distribution, **kwds: Any) -> None:
+    def show(self, dist: Distribution, **kwds: Any) -> None:
         """Plot the logits of a given distribution as bars.
 
         Args:
@@ -178,3 +179,48 @@ class Bars:
         self.axes.set_xlabel('$\\mathrm{Pr}(y)$')
         self.axes.set_ylabel('$y$')
         self.axes.legend(fontsize='small')
+
+
+class Grids:
+    """Grids plot, for visualizing the cluster indices
+    of each state in the random walk grid world.
+    """
+
+    fig: Figure
+    axes: Axes
+
+    def __init__(self) -> None:
+        """Initialize a grids plot."""
+        scale = 1.0
+        self.fig, self.axes = plt.subplots(
+            figsize=(4 * scale, 4 * scale),
+            layout='constrained',
+        )
+
+    def show(self, dists: Iterable[Distribution], shape: tuple[int, ...]) -> None:
+        """Plot the cluster indices of each state as grids.
+
+        Args:
+            dists (`Iterable[Distribution]`):
+                Posterior distributions p(z|x) for all state x.
+            shape (`tuple[int, int]`): Shape of the grids.
+        """
+        # data
+        data = []
+        for dist in dists:
+            if isinstance(dists, Gaussian):
+                data.append(0)
+            if isinstance(dist, GaussianMixture):
+                data.append(dist.logits.argmax().item())
+        data = jnp.array(data).reshape(shape)
+        # grids
+        self.axes.imshow(
+            data,
+            cmap='gray',
+            extent=(0, data.shape[0], data.shape[1], 0),
+            origin='upper',
+        )
+        self.axes.set_xticks(range(len(data) + 1))
+        self.axes.set_yticks(range(len(data) + 1))
+        self.axes.xaxis.tick_top()
+        self.axes.grid(color='gray', linestyle='-', linewidth=0.5)
