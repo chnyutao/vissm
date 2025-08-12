@@ -9,7 +9,7 @@ import wandb
 from jaxtyping import Array, PRNGKeyArray
 
 import plots
-from dataset.random_walk import tr
+from dataset.random_walk import SIZE, STEP, tr
 from models import SSM
 from models.ssm import loss_fn
 
@@ -61,44 +61,45 @@ def eval_step(
             Callback function for processing metrics. Default to `lambda _: None`.
     """
     # generate states & actions
-    # given the current state s[0] and action a,
-    # both s[1] and s[2] are possible next states.
-    s = [tr(jnp.array([i * 16, 16]), jnp.zeros([2]))[-1] for i in range(3)]
+    s = [
+        tr(jnp.array([i, j]), jnp.zeros([2]))[-1]
+        for i in range(0, SIZE, STEP)
+        for j in range(0, SIZE, STEP)
+    ]
+    s = jnp.array(s).reshape(SIZE // STEP, SIZE // STEP, 1, SIZE, SIZE)
     a = jax.nn.one_hot(0, num_classes=4)
     # computing prior & posteriors
     dists = {}
-    z, _ = model.vae.encode(s[0], key=key)
+    z, _ = model.vae.encode(s[0][1], key=key)
     dists['prior'] = model.vae.split(model.tr(jnp.concat([z, a])))
-    dists['posterior/1'] = model.vae.split(model.vae.encoder(s[1]))
-    dists['posterior/2'] = model.vae.split(model.vae.encoder(s[2]))
+    dists['posterior/1'] = model.vae.split(model.vae.encoder(s[1][1]))
+    dists['posterior/2'] = model.vae.split(model.vae.encoder(s[2][1]))
     # heatmap
-    plt.clf()
-    fig1, axes = plots.make_distribution_map()
-    plots.heatmap(fig1, axes, dists['prior'])
+    heatmap = plots.Heatmap()
+    heatmap.density(dists['prior'])
     for label, kwds in [
         ('posterior/1', {'alpha': 0.4, 'color': 'darkorange'}),
         ('posterior/2', {'alpha': 0.8, 'color': 'lavender'}),
         ('prior', {'alpha': 0.2, 'color': 'black', 'hatch': '///'}),
     ]:
-        plots.marginal(fig1, axes, dists[label], label=label, **kwds)
+        heatmap.marginal(dists[label], label=label, **kwds)
     for label, kwds in [
         ('posterior/1', {'c': 'darkorange'}),
         ('posterior/2', {'c': 'lavender'}),
     ]:
-        plots.mean(fig1, axes, dists[label], **kwds)
+        heatmap.mean(dists[label], **kwds)
     # bars
-    fig2, axes = plots.make_distribution_bars()
+    bars = plots.Bars()
     for label, kwds in [
         ('posterior/1', {'alpha': 0.4, 'color': 'darkorange'}),
         ('posterior/2', {'alpha': 0.8, 'color': 'lavender'}),
         ('prior', {'alpha': 0.2, 'color': 'black', 'hatch': '///'}),
     ]:
-        plots.bars(fig2, axes, dists[label], label=label, **kwds)
+        bars.barh(dists[label], label=label, **kwds)
     # callback
     metrics = {
-        'eval/heatmap': wandb.Image(fig1),
-        'eval/bars': wandb.Image(fig2),
+        'eval/heatmap': wandb.Image(heatmap.fig),
+        'eval/bars': wandb.Image(bars.fig),
     }
     jax.debug.callback(callback, metrics)
-    plt.close(fig1)
-    plt.close(fig2)
+    plt.close('all')
