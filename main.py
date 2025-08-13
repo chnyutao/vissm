@@ -62,6 +62,10 @@ opt_state = opt.init(eqx.filter(model, eqx.is_array))
 # main loop
 train_step = partial(train_step, opt=opt, callback=lambda x: wandb.log(x))
 eval_step = partial(eval_step, callback=lambda x: wandb.log(x))
+## initial eval
+key, subkey = jr.split(key)
+eval_step(model, key=subkey)
+## train/eval epochs
 for _ in tqdm(range(config.epochs)):
     # train
     for batch in dataset:
@@ -70,4 +74,5 @@ for _ in tqdm(range(config.epochs)):
     # eval
     key, subkey = jr.split(key)
     eval_step(model, key=subkey)
+## final eval
 eval_step(model, key=key)
