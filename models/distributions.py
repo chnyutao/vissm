@@ -14,6 +14,11 @@ class Gaussian(eqx.Module):
     def density(self, lo: Array, hi: Array) -> tuple[Array, ...]:
         """Compute the probability density over a given range.
 
+        NOTE that while in principal this function works with high-dimensional
+        distributions, for `D` dimensions with `N` steps each axies, we will have
+        `N^D` points to evaluate (scaling exponentially). One will likely run
+        into memory or runtime issues when `D>=5`.
+
         Args:
             lo (`Array`): Lower bound of the range.
             hi (`Array`): Upper bound of the range.
@@ -23,9 +28,8 @@ class Gaussian(eqx.Module):
             the probability density values at each point on the grid.
         """
         xy = jnp.unstack(jnp.linspace(lo, hi, num=100), axis=-1)
-        z = self.to().prob(jnp.dstack(jnp.meshgrid(*xy)))
-        assert isinstance(z, Array)
-        return (*xy, z)
+        z = self.to().prob(jnp.stack(jnp.meshgrid(*xy), axis=-1))
+        return (*xy, jnp.array(z))
 
     def marginal(self, lo: float, hi: float, *, dim: int) -> tuple[Array, Array]:
         """Compute the marginal density at a given dimension over a given range.
@@ -41,8 +45,7 @@ class Gaussian(eqx.Module):
         """
         x = jnp.arange(lo, hi, min((hi - lo) / 100, 1e-2))
         y = Normal(self.mean[dim], self.std[dim]).prob(x)
-        assert isinstance(y, Array)
-        return x, y
+        return x, jnp.array(y)
 
     def to(self) -> MvNormal:
         """Cast to a `distrax.MultivariateNormalDiag`.
@@ -63,6 +66,11 @@ class GaussianMixture(eqx.Module):
     def density(self, lo: Array, hi: Array) -> tuple[Array, ...]:
         """Compute the probability density over a given range.
 
+        NOTE that while in principal this function works with high-dimensional
+        distributions, for `D` dimensions with `N` steps each axies, we will have
+        `N^D` points to evaluate (scaling exponentially). One will likely run
+        into memory or runtime issues when `D>=5`.
+
         Args:
             lo (`Array`): Lower bound of the range.
             hi (`Array`): Upper bound of the range.
@@ -72,9 +80,8 @@ class GaussianMixture(eqx.Module):
             the probability density values at each point on the grid.
         """
         xy = jnp.unstack(jnp.linspace(lo, hi, num=100), axis=-1)
-        z = self.to().prob(jnp.dstack(jnp.meshgrid(*xy)))
-        assert isinstance(z, Array)
-        return (*xy, z)
+        z = self.to().prob(jnp.stack(jnp.meshgrid(*xy), axis=-1))
+        return (*xy, jnp.array(z))
 
     def marginal(self, lo: float, hi: float, *, dim: int) -> tuple[Array, Array]:
         """Compute the marginal density at a given dimension over a given range.
@@ -93,8 +100,7 @@ class GaussianMixture(eqx.Module):
             mixture_distribution=Categorical(self.logits),
             components_distribution=Normal(self.means[:, dim], self.stds[:, dim]),
         ).prob(x)
-        assert isinstance(y, Array)
-        return x, y
+        return x, jnp.array(y)
 
     def to(self) -> MixtureSameFamily:
         """Cast to a `distrax.MixtureSameFamily`.

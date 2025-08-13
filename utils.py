@@ -77,7 +77,7 @@ def eval_step(
     dists['posterior/2'] = model.vae.split(model.vae.encoder(s[2][1]))
     # heatmap
     heatmap = plots.Heatmap()
-    heatmap.density(dists['prior'])
+    heatmap.show(dists['prior'])
     for label, kwds in [
         ('posterior/1', {'alpha': 0.4, 'color': 'darkorange'}),
         ('posterior/2', {'alpha': 0.8, 'color': 'lavender'}),

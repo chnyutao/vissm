@@ -1,9 +1,9 @@
 from collections.abc import Iterable
+from itertools import product
 from typing import Any
 
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-from jaxtyping import Array
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import ConnectionPatch
@@ -20,7 +20,11 @@ plt.rcParams.update(
 
 
 class Heatmap:
-    """Distribution heatmap plot (for continous rv)."""
+    """Distribution heatmap plot (for continous rv).
+
+    1. Only visualize the first two dimensions.
+    2. `Heatmap.show` must be called before others.
+    """
 
     fig: Figure
     axes: dict[str, Axes]
@@ -42,7 +46,7 @@ class Heatmap:
         # need to adjust `bottom` according to `scale`
         self.fig.subplots_adjust(left=0, bottom=0.045, top=1, wspace=0, hspace=0)
 
-    def density(self, dist: Distribution) -> None:
+    def show(self, dist: Distribution) -> None:
         """Plot the density heatmap of a given distribution.
 
         Args:
@@ -51,13 +55,15 @@ class Heatmap:
         """
         # data
         if isinstance(dist, Gaussian):
+            dist = Gaussian(dist.mean[..., :2], dist.std[..., :2])
             mean, std = dist.mean, dist.std
             lo, hi = mean - 2 * std.max(), mean + 2 * std.max()
             x, y, z = dist.density(lo, hi)
         if isinstance(dist, GaussianMixture):
-            means, stds = dist.means, dist.stds
-            lo = (means - 2 * stds.max(axis=1)[jnp.newaxis]).min(axis=0)
-            hi = (means + 2 * stds.max(axis=1)[jnp.newaxis]).max(axis=0)
+            dist = GaussianMixture(dist.logits, dist.means[..., :2], dist.stds[..., :2])
+            means, stds = dist.means[..., :2], dist.stds[..., :2]
+            lo = (means - 2 * stds.max(axis=1, keepdims=True)).min(axis=0)
+            hi = (means + 2 * stds.max(axis=1, keepdims=True)).max(axis=0)
             d = (hi - lo).max() - (hi - lo)
             lo, hi = lo - d / 2, hi + d / 2
             x, y, z = dist.density(lo, hi)
@@ -111,7 +117,7 @@ class Heatmap:
         ax.legend(fontsize='small')
 
     def mean(self, dist: Distribution, **kwds: Any) -> None:
-        """Plot the mean (points) of a given distribution.
+        """Plot the mean (as stars) of a given distribution.
 
         Args:
             dist (`Distribution`): The given distribution.
@@ -119,8 +125,7 @@ class Heatmap:
             **kwds (`Any`): Extra keyword arguments for `ax.scatter`.
         """
         # data
-        mean = dist.to().mean()
-        assert isinstance(mean, Array)
+        mean = jnp.array(dist.to().mean())[..., :2]
         x, y = mean
         # connection patch
         ax = self.axes['main']
@@ -168,16 +173,16 @@ class Bars:
         if isinstance(dist, GaussianMixture):
             probs = jnp.exp(dist.logits)
         # bars
-        if self.axes.get_yticks().dtype == float:
-            self.axes.set_yticks([])  # clear default ticks
-        ys = jnp.arange(len(probs)) + len(self.axes.get_yticks())
-        yticks = [*self.axes.get_yticks(), *ys]
-        self.axes.barh(ys, probs, align='center', **kwds)
-        self.axes.set_xticks([0, 0.5, 1])
-        self.axes.set_yticks(yticks)
-        self.axes.set_yticklabels([f'${i % len(probs)}$' for i in range(len(yticks))])
-        self.axes.set_xlabel('$\\mathrm{Pr}(y)$')
-        self.axes.set_ylabel('$y$')
+        if self.axes.get_xticks().dtype == float:
+            self.axes.set_xticks([])  # clear default ticks
+        xs = jnp.arange(len(probs)) + len(self.axes.get_xticks())
+        xticks = [*self.axes.get_xticks(), *xs]
+        self.axes.bar(xs, probs, align='center', **kwds)
+        self.axes.set_xticks(xticks)
+        self.axes.set_yticks([0, 0.5, 1])
+        self.axes.set_xticklabels([f'${x % len(probs)}$' for x in xticks])
+        self.axes.set_xlabel('$y$')
+        self.axes.set_ylabel('$\\mathrm{Pr}(y)$')
         self.axes.legend(fontsize='small')
 
 
@@ -206,21 +211,26 @@ class Grids:
             shape (`tuple[int, int]`): Shape of the grids.
         """
         # data
-        data = []
+        data, probs = [], []
         for dist in dists:
-            if isinstance(dists, Gaussian):
-                data.append(0)
+            if isinstance(dist, Gaussian):
+                return
             if isinstance(dist, GaussianMixture):
                 data.append(dist.logits.argmax().item())
+                probs.append(jnp.exp(dist.logits.max()).item())
         data = jnp.array(data).reshape(shape)
+        probs = jnp.array(probs).reshape(shape)
         # grids
-        self.axes.imshow(
-            data,
-            cmap='gray',
-            extent=(0, data.shape[0], data.shape[1], 0),
-            origin='upper',
-        )
-        self.axes.set_xticks(range(len(data) + 1))
-        self.axes.set_yticks(range(len(data) + 1))
+        extent = (0, data.shape[0], data.shape[1], 0)
+        im = self.axes.imshow(probs, cmap='RdBu', extent=extent)
+        im.set_clim(0, 1)
+        self.axes.set_xticks(range(len(data) + 1), [])
+        self.axes.set_yticks(range(len(data) + 1), [])
         self.axes.xaxis.tick_top()
-        self.axes.grid(color='gray', linestyle='-', linewidth=0.5)
+        self.axes.grid(color='w', linestyle='-', linewidth=0.5)
+        # colorbar
+        ax = self.axes.inset_axes((1.05, 0.0, 0.05, 1))
+        self.fig.colorbar(im, cax=ax)
+        # text
+        for i, j in product(range(data.shape[0]), range(data.shape[1])):
+            self.axes.text(j + 0.5, i + 0.5, f'${data[i, j].item()}$', color='k')
