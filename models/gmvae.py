@@ -4,6 +4,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+from jax.lax import stop_gradient as sg
 from jaxtyping import Array, PRNGKeyArray
 
 from .distributions import GaussianMixture
@@ -43,7 +44,9 @@ class GMVAE(eqx.Module):
         # categorical posterior q(y|x)
         logits = posterior.logits
         gumbel = jr.gumbel(key1, logits.shape)
-        y = jnp.exp(jax.nn.log_softmax((logits + gumbel) / self.tau))
+        y_soft = jnp.exp(jax.nn.log_softmax((logits + gumbel) / self.tau))
+        y_hard = jax.nn.one_hot(jnp.argmax(y_soft, axis=-1), logits.shape[-1])
+        y = y_soft + sg(y_hard - y_soft)
         # gaussian posterior q(z|x,y)
         means, stds = posterior.means, posterior.stds
         mean = jnp.einsum('k,kn->n', y, means)
