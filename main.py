@@ -76,3 +76,7 @@ for _ in tqdm(range(config.epochs)):
     eval_step(model, key=subkey)
 ## final eval
 eval_step(model, key=key)
+
+# save model
+eqx.tree_serialise_leaves('model.eqx', model)
+wandb.save('model.eqx')
