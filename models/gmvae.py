@@ -42,7 +42,8 @@ class GMVAE(eqx.Module):
         posterior = self.split(self.encoder(x))
         # categorical posterior q(y|x)
         logits = posterior.logits
-        y = jax.nn.softmax((logits + jr.gumbel(key1, logits.shape)) / self.tau)
+        gumbel = jr.gumbel(key1, logits.shape)
+        y = jnp.exp(jax.nn.log_softmax((logits + gumbel) / self.tau))
         # gaussian posterior q(z|x,y)
         means, stds = posterior.means, posterior.stds
         mean = jnp.einsum('k,kn->n', y, means)
