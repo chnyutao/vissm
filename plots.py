@@ -233,4 +233,5 @@ class Grids:
         self.fig.colorbar(im, cax=ax)
         # text
         for i, j in product(range(data.shape[0]), range(data.shape[1])):
-            self.axes.text(j + 0.5, i + 0.5, f'${data[i, j].item()}$', color='k')
+            color = 'k' if 0.2 < probs[i, j].item() < 0.8 else 'w'
+            self.axes.text(j + 0.5, i + 0.5, f'${data[i, j].item()}$', color=color)
