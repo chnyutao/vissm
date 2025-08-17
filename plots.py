@@ -62,8 +62,8 @@ class Heatmap:
         if isinstance(dist, GaussianMixture):
             dist = GaussianMixture(dist.logits, dist.means[..., :2], dist.stds[..., :2])
             means, stds = dist.means[..., :2], dist.stds[..., :2]
-            lo = (means - 2 * stds.max(axis=1, keepdims=True)).min(axis=0)
-            hi = (means + 2 * stds.max(axis=1, keepdims=True)).max(axis=0)
+            lo = (means - 2 * stds).min(axis=0)
+            hi = (means + 2 * stds).max(axis=0)
             d = (hi - lo).max() - (hi - lo)
             lo, hi = lo - d / 2, hi + d / 2
             x, y, z = dist.density(lo, hi)
