@@ -10,8 +10,8 @@ from tqdm.auto import tqdm
 
 from config import Config
 from dataset import make_random_walks
-from models import GMVAE, SSM, VAE, MLPDecoder, MLPEncoder, Transition
-from utils import eval_step, train_step
+from models.ssm import SSM
+from utils import eval_step, make_tr, make_vae, train_step
 
 # configuration
 config = tyro.cli(Config)
@@ -21,38 +21,19 @@ wandb.init(project='vissm', config=config.asdict())
 # init dataset
 key, subkey = jr.split(key)
 dataset = make_random_walks(
-    config.n,
-    config.length,
+    config.data.n,
+    config.data.length,
     key=subkey,
-    batch_size=config.batch_size,
-    shuffle=config.shuffle,
+    batch_size=config.data.batch_size,
+    shuffle=config.data.shuffle,
 )
 
 # init model
-key, key1, key2, key3 = jr.split(key, 1 + 3)
-activation = getattr(jax.nn, config.activation)
-if config.vae == 'gmvae':
-    distribution_size = config.k + config.k * config.latent_size * 2
-    vae = GMVAE(
-        encoder=MLPEncoder(distribution_size, key=key1, activation=activation),
-        decoder=MLPDecoder(config.latent_size, key=key2, activation=activation),
-        k=config.k,
-        tau=config.tau,
-    )
-elif config.vae == 'vae':
-    distribution_size = config.latent_size * 2
-    vae = VAE(
-        encoder=MLPEncoder(distribution_size, key=key1, activation=activation),
-        decoder=MLPDecoder(config.latent_size, key=key2, activation=activation),
-    )
+act = getattr(jax.nn, config.model.act)
+key, key1, key2 = jr.split(key, 3)
 model = SSM(
-    vae,
-    tr=Transition(
-        config.latent_size + 4,
-        distribution_size,
-        key=key3,
-        activation=activation,
-    ),
+    vae=make_vae(config, key=key1),
+    tr=make_tr(config, key=key2),
 )
 
 # init optimizer
@@ -60,21 +41,16 @@ opt = optax.adam(config.lr)
 opt_state = opt.init(eqx.filter(model, eqx.is_array))
 
 # main loop
-train_step = partial(train_step, opt=opt, callback=lambda x: wandb.log(x))
-eval_step = partial(eval_step, callback=lambda x: wandb.log(x))
-## initial eval
-key, subkey = jr.split(key)
-eval_step(model, key=subkey)
-## train/eval epochs
+train_step = partial(train_step, callback=wandb.log, opt=opt)
+eval_step = partial(eval_step, callback=wandb.log)
 for _ in tqdm(range(config.epochs)):
+    # eval
+    key, subkey = jr.split(key)
+    eval_step(model, key=subkey)
     # train
     for batch in dataset:
         key, subkey = jr.split(key)
         model, opt_state = train_step(model, batch, opt_state, key=subkey)
-    # eval
-    key, subkey = jr.split(key)
-    eval_step(model, key=subkey)
-## final eval
 eval_step(model, key=key)
 
 # save model

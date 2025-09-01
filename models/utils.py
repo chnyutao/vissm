@@ -1,123 +1,95 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from itertools import pairwise
 
 import equinox as eqx
-import equinox.nn as nn
 import jax
+import jax.numpy as jnp
 import jax.random as jr
+from equinox import nn
 from jaxtyping import Array, PRNGKeyArray
 
+from .distributions import Categorical, Gaussian
 
-class Transition(nn.MLP):
-    """Transition function."""
+
+class CatNet(eqx.Module):
+    """Categorical Distribution Network."""
+
+    net: Callable[[Array], Array]
+
+    def __call__(self, x: Array) -> Categorical:
+        """
+        Compute the parameters of a Categorical distribution `log_p = f(x)`,
+        where `f(x)` is a parametrized neural network.
+
+        Args:
+            x (`Array`): Input array.
+
+        Returns:
+            A Categorical distribution.
+        """
+        log_p = jax.nn.log_softmax(self.net(x))
+        return Categorical(log_p)
+
+
+class GaussNet(eqx.Module):
+    """Gaussian Distribution Network."""
+
+    net: Callable[[Array], Array]
+
+    def __call__(self, x: Array) -> Gaussian:
+        """
+        Compute the parameters of a Gaussian distribution `(mean, std) = f(x)`,
+        where `f(x)` is a parametrized neural network.
+
+        Args:
+            x (`Array`): Input array.
+
+        Returns:
+            A Gaussian distribution.
+        """
+        mean, log_std = jnp.split(self.net(x), 2)
+        return Gaussian(mean, jnp.exp(log_std))
+
+
+class MLP(nn.Sequential):
+    """Multi-layer Perceptron."""
 
     def __init__(
         self,
         in_size: int,
         out_size: int,
+        hidden_sizes: Sequence[int] = (),
         *,
         key: PRNGKeyArray,
-        activation: Callable[[Array], Array] = jax.nn.relu,
+        act: Callable[[Array], Array] = jax.nn.relu,
     ):
-        """Initialize the transition function.
+        """Initialize an multi-layer perceptron.
+
+        NOTE that the final activation will be dropped.
 
         Args:
             in_size (`int`): Input size.
             out_size (`int`): Output size.
+            hidden_sizes (`Sequence[int]`): Hidden layer sizes.
             key (`PRNGKeyArray`): JAX random key.
-            activation (`Callable[[Array], Array]`):
+            act (`Callable[[Array], Array]`, optional):
                 The activation function. Default to `jax.nn.relu`.
         """
-        super().__init__(
-            in_size,
-            out_size,
-            width_size=256,
-            depth=1,
-            activation=activation,
-            key=key,
-        )
+        layer_sizes = [in_size, *hidden_sizes, out_size]
+        layers = []
+        keys = iter(jr.split(key, len(layer_sizes) - 1))
+        for in_size, out_size in pairwise(layer_sizes):
+            layers.append(nn.Linear(in_size, out_size, key=next(keys)))
+            layers.append(nn.Lambda(act))
+        super().__init__(layers[:-1])  # drop last act
 
-
-class MLPEncoder(eqx.Module):
-    """MLP Encoder for 64x64 images."""
-
-    layers: nn.Sequential
-
-    def __init__(
-        self,
-        latent_size: int,
-        *,
-        key: PRNGKeyArray,
-        activation: Callable[[Array], Array] = jax.nn.relu,
-    ):
-        """Initialize the MLP encoder.
-
-        Args:
-            latent_size (`int`): Latent dimensionality.
-            key (`PRNGKeyArray`): JAX random key.
-            activation (`Callable[[Array], Array]`):
-                The activation function. Default to `jax.nn.relu`.
-        """
-        key1, key2, key3 = jr.split(key, 3)
-        self.layers = nn.Sequential(
-            [
-                nn.Linear(1 * 64 * 64, 256, key=key1),
-                nn.Lambda(activation),
-                nn.Linear(256, 128, key=key2),
-                nn.Lambda(activation),
-                nn.Linear(128, latent_size, key=key3),
-            ]
-        )
-
-    def __call__(self, x: Array):
-        """Forward the input through the encoder.
+    def __call__(self, x: Array) -> Array:
+        """Forward the flattened input through the layers.
 
         Args:
             x (`Array`): Input array.
 
         Returns:
-            Encoded features of shape `(latent_size,)`.
+            Outupt array, shape determined by the last layer.
         """
-        return self.layers(x.ravel())
-
-
-class MLPDecoder(eqx.Module):
-    """MLP Decoder for 64x64 images."""
-
-    layers: nn.Sequential
-
-    def __init__(
-        self,
-        latent_size: int,
-        *,
-        key: PRNGKeyArray,
-        activation: Callable[[Array], Array] = jax.nn.relu,
-    ):
-        """Initialize the MLP decoder.
-
-        Args:
-            latent_size (`int`): Latent dimensionality.
-            key (`PRNGKeyArray`): JAX random key.
-            activation (`Callable[[Array], Array]`):
-                The activation function. Default to `jax.nn.relu`.
-        """
-        key1, key2, key3 = jr.split(key, 3)
-        self.layers = nn.Sequential(
-            [
-                nn.Linear(latent_size, 128, key=key1),
-                nn.Lambda(activation),
-                nn.Linear(128, 256, key=key2),
-                nn.Lambda(activation),
-                nn.Linear(256, 1 * 64 * 64, key=key3),
-            ]
-        )
-
-    def __call__(self, x: Array):
-        """Forward the input through the decoder.
-
-        Args:
-            x (`Array`): Input array.
-
-        Returns:
-            Decoded image of shape `(1, 64, 64)`.
-        """
-        return self.layers(x).reshape(1, 64, 64)
+        return super().__call__(x.ravel())

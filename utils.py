@@ -2,17 +2,75 @@ from collections.abc import Callable
 
 import equinox as eqx
 import jax
-import jax.numpy as jnp
 import jax.random as jr
-import matplotlib.pyplot as plt
 import optax
-import wandb
 from jaxtyping import Array, PRNGKeyArray
 
-import plots
-from dataset.random_walk import SIZE, STEP, tr
-from models import SSM
-from models.ssm import loss_fn
+from config import Config
+from models.ssm import SSM
+from models.tr import GaussTr
+from models.utils import MLP
+from models.vae import VAE
+
+
+def make_tr(config: Config, *, key: PRNGKeyArray) -> GaussTr:
+    """
+    Initialize a transition function specified by the configuration.
+
+    Args:
+        config (`Config`): Configuration.
+        key (`PRNGKeyArray`): JAX random key.
+
+    Returns:
+        A transition function.
+    """
+    match config.model.tr:
+        case 'gaussian':
+            tr = GaussTr(
+                MLP(
+                    config.model.latent_size + 4,
+                    config.model.latent_size * 2,
+                    (config.model.latent_size * 2,) * 2,
+                    key=key,
+                    act=getattr(jax.nn, config.model.act),
+                )
+            )
+    return tr
+
+
+def make_vae(config: Config, *, key: PRNGKeyArray) -> VAE:
+    """
+    Initialize a variational auto-encoder specified by the configuration.
+
+    Args:
+        config (`Config`): Configuration.
+        key (`PRNGKeyArray`): JAX random key.
+
+    Returns:
+        A variational auto-encoder.
+    """
+    ekey, dkey = jr.split(key)
+    act = getattr(jax.nn, config.model.act)
+    latent_size = config.model.latent_size
+    match config.model.posterior:
+        case 'gaussian':
+            vae = VAE(
+                MLP(
+                    in_size=1 * 64 * 64,
+                    out_size=latent_size * 2,
+                    hidden_sizes=(256, 128),
+                    key=ekey,
+                    act=act,
+                ),
+                MLP(
+                    in_size=latent_size,
+                    out_size=1 * 64 * 64,
+                    hidden_sizes=(128, 256),
+                    key=dkey,
+                    act=act,
+                ),
+            )
+    return vae
 
 
 @eqx.filter_jit
@@ -40,11 +98,11 @@ def train_step(
     Returns:
         A 2-tuple containing the updated model, the updated optimizer state.
     """
-    [_, metrics], grads = loss_fn(model, batch, key=key)
+    [_, metrics], grads = model.loss_fn(batch, key=key)
     updates, opt_state = opt.update(
         grads,
         opt_state,
-        params=eqx.filter(model, eqx.is_array),
+        eqx.filter(model, eqx.is_array),
     )
     model = eqx.apply_updates(model, updates)
     jax.debug.callback(callback, metrics)
@@ -57,7 +115,7 @@ def eval_step(
     key: PRNGKeyArray,
     callback: Callable[..., None] = lambda _: None,
 ) -> None:
-    """Evaluate the model with visualizations and metrics.
+    """Perform a single evaluation step between or after training epochs.
 
     Args:
         model (`SSM`): The current model.
@@ -65,55 +123,5 @@ def eval_step(
         callback (`Callable[..., None]`, optional):
             Callback function for processing metrics. Default to `lambda _: None`.
     """
-    # generate states & actions
-    s = [
-        tr(jnp.array([i, j]), jnp.zeros([2]))[-1]
-        for i in range(0, SIZE, STEP)
-        for j in range(0, SIZE, STEP)
-    ]
-    s = jnp.array(s).reshape(SIZE // STEP, SIZE // STEP, 1, SIZE, SIZE)
-    a = jax.nn.one_hot(0, num_classes=4)
-    # computing prior & posteriors
-    dists = {}
-    z, _ = model.vae.encode(s[0][1], key=key)
-    dists['prior'] = model.vae.split(model.tr(jnp.concat([z, a])))
-    dists['posterior/1'] = model.vae.split(model.vae.encoder(s[1][1]))
-    dists['posterior/2'] = model.vae.split(model.vae.encoder(s[2][1]))
-    # heatmap
-    heatmap = plots.Heatmap()
-    heatmap.show(dists['prior'])
-    for label, kwds in [
-        ('posterior/1', {'alpha': 0.4, 'color': 'darkorange'}),
-        ('posterior/2', {'alpha': 0.8, 'color': 'lavender'}),
-        ('prior', {'alpha': 0.2, 'color': 'black', 'hatch': '///'}),
-    ]:
-        heatmap.marginal(dists[label], label=label, **kwds)
-    for label, kwds in [
-        ('posterior/1', {'c': 'darkorange'}),
-        ('posterior/2', {'c': 'lavender'}),
-    ]:
-        heatmap.mean(dists[label], **kwds)
-    # bars
-    bars = plots.Bars()
-    for label, kwds in [
-        ('posterior/1', {'alpha': 0.4, 'color': 'darkorange'}),
-        ('posterior/2', {'alpha': 0.8, 'color': 'lavender'}),
-        ('prior', {'alpha': 0.2, 'color': 'black', 'hatch': '///'}),
-    ]:
-        bars.show(dists[label], label=label, **kwds)
-    # grids
-    dists = (
-        model.vae.encode(s[i, j], key=jr.key(0))[-1]
-        for i in range(s.shape[0])
-        for j in range(s.shape[1])
-    )
-    grids = plots.Grids()
-    grids.show(dists, shape=s.shape[:2])
-    # callback
-    metrics = {
-        'eval/heatmap': wandb.Image(heatmap.fig),
-        'eval/bars': wandb.Image(bars.fig),
-        'eval/grids': wandb.Image(grids.fig),
-    }
+    metrics = {}
     jax.debug.callback(callback, metrics)
-    plt.close('all')

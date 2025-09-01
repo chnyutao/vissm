@@ -1,94 +1,88 @@
-from collections.abc import Callable
+from typing import TypedDict
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-from distrax import Categorical
-from distrax import MultivariateNormalDiag as MvNormal
-from jaxtyping import Array, PRNGKeyArray, PyTree
+from jaxtyping import Array, PRNGKeyArray
 
-from .distributions import Distribution, Gaussian, GaussianMixture
-from .gmvae import GMVAE
+from .distributions import Gaussian
+from .tr import GaussTr
 from .vae import VAE
 
 
+class Result(TypedDict):
+    posterior: Gaussian
+    prior: Gaussian
+    reconst: Array
+
+
 class SSM(eqx.Module):
-    """State-Space Model with Variation Inference.
+    """State-Space Model with Variational Inference."""
 
-    *Note* that one need to ensure that the encoder and transition neural networks have
-    the same output dimensions, so that `self.vae.split` can be applied to the output of
-    both for computing (transition) prior and posterior.
-    """
-
-    vae: GMVAE | VAE
-    tr: Callable[[Array], Array]
+    vae: VAE
+    tr: GaussTr
 
     def __call__(
         self,
         data: tuple[Array, Array, Array],
         *,
         key: PRNGKeyArray,
-    ) -> tuple[Array, dict[str, Distribution]]:
-        """Forward a Markov transition through the state-space model.
+    ) -> Result:
+        """
+        Forward the input data through the model.
 
         Args:
             data (`tuple[Array, Array, Array]`):
-                A 3-tuple containing the current state, action, and next state.
+               A 3-tuple containing the current state, action, and next state.
             key (`PRNGKeyArray`): JAX random key.
 
         Returns:
-            A 2-tuple containing the reconstructed next state, and a dictionary of
-            parameters of prior and postesrior distributions.
+            A dictionary containing model outputs.
         """
-        dists = {}
-        s, a, sn = data  # state, action, next_state
-        key1, key2 = jr.split(key)
-        # transition (prior)
-        z, _ = self.vae.encode(s, key=key1)
-        dists['prior'] = self.vae.split(self.tr(jnp.concat([z, a])))
+        s, a, ns = data  # state, action, next_state
+        # prior (transition)
+        z = self.vae.encode(s).sample(key=key)
+        prior = self.tr(z, a)
         # posterior
-        zn, dists['posterior'] = self.vae.encode(sn, key=key2)
+        posterior = self.vae.encode(ns)
+        # reconstruction
+        z = posterior.sample(key=key)
+        reconst = self.vae.decode(z)
         # return
-        return self.vae.decode(zn), dists
-
-
-@eqx.filter_value_and_grad(has_aux=True)
-def loss_fn(
-    model: SSM,
-    data: tuple[Array, Array, Array],
-    *,
-    key: PRNGKeyArray,
-) -> tuple[Array, PyTree]:
-    """negative evidence lower bound (elbo)."""
-    x, batch_size = data[-1], data[0].shape[0]
-    x_hat, dists = jax.vmap(model)(data, key=jr.split(key, batch_size))
-    # reconstruction error
-    reconst = jnp.sum((x - x_hat) ** 2, axis=range(1, len(x.shape))).mean()
-    # kld ( posetrior || prior )
-    posterior, prior = dists['posterior'], dists['prior']
-    if isinstance(posterior, Gaussian) and isinstance(prior, Gaussian):
-        qz, pz = prior.to(), posterior.to()
-        kld = pz.kl_divergence(qz).mean()
-    if isinstance(posterior, GaussianMixture) and isinstance(prior, GaussianMixture):
-        # categorical kld
-        qy, py = Categorical(posterior.logits), Categorical(prior.logits)
-        kld_cat = qy.kl_divergence(py)
-        # gaussian kld
-        qz = MvNormal(posterior.means, posterior.stds)
-        pz = MvNormal(prior.means, prior.stds)
-        kld_gauss = (jnp.exp(qy.logits) * qz.kl_divergence(pz)).sum(axis=-1)
-        kld = (kld_cat + kld_gauss).mean()
-    # compute loss + metrics
-    loss = reconst + kld
-    metrics = {'train/loss': loss, 'train/reconst': reconst, 'train/kld': kld}
-    if isinstance(posterior, Gaussian) and isinstance(prior, Gaussian):
-        pass
-    if isinstance(posterior, GaussianMixture) and isinstance(prior, GaussianMixture):
-        metrics = metrics | {
-            'train/kld-cat': kld_cat.mean(),
-            'train/kld-gauss': kld_gauss.mean(),
-            'train/ent-qy': qy.entropy().mean(),
-            'train/ent-py': py.entropy().mean(),
+        return {
+            'posterior': posterior,
+            'prior': prior,
+            'reconst': reconst,
         }
-    return loss, metrics
+
+    @eqx.filter_value_and_grad(has_aux=True)
+    def loss_fn(
+        self,
+        data: tuple[Array, Array, Array],
+        *,
+        key: PRNGKeyArray,
+    ) -> tuple[Array, dict[str, Array]]:
+        """
+        Compute the loss and associated metrics of the model.
+
+        Args:
+            data (`tuple[Array, Array, Array]`):
+                A 3-tuple containing the current state, action and next state.
+            key (`PRNGKeyArray`): JAX random key.
+
+        Returns:
+            A 2-tuple containing the loss and asscoiated metrics.
+        """
+        batch_size = data[0].shape[0]
+        results = jax.vmap(self)(data, key=jr.split(key, batch_size))
+        # reconstruction error
+        x = data[-1]
+        x_hat = results['reconst'].reshape(x.shape)
+        reconst = jnp.sum((x - x_hat) ** 2, axis=range(1, x.ndim)).mean()
+        # kld (posterior || prior)
+        posterior, prior = results['posterior'], results['prior']
+        kld = posterior.to().kl_divergence(prior.to()).mean()
+        # return loss + metrics
+        loss = reconst + kld
+        return loss, {'train/loss': loss, 'train/reconst': reconst, 'train/kld': kld}

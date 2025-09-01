@@ -1,117 +1,59 @@
+import distrax
 import equinox as eqx
+import jax
 import jax.numpy as jnp
-from distrax import Categorical, MixtureSameFamily, Normal
-from distrax import MultivariateNormalDiag as MvNormal
-from jaxtyping import Array
+import jax.random as jr
+from jaxtyping import Array, PRNGKeyArray
+
+
+class Categorical(eqx.Module):
+    """Categorical Distribution."""
+
+    log_p: Array
+
+    def sample(self, tau: float = 1e-3, *, key: PRNGKeyArray) -> Array:
+        """Sample from the distribution using the reparametrization trick.
+
+        Args:
+            tau (`float`, optional): Gumbel-softmax temperature. Default to `1e-3`.
+            key (`PRNGKeyArray`): JAX random key.
+
+        Returns:
+            A sample drawn from the Categorical distribution.
+        """
+        gumbel = jr.gumbel(key, self.log_p.shape)
+        return jnp.exp(jax.nn.log_softmax((self.log_p + gumbel) / tau))
+
+    def to(self) -> distrax.Categorical:
+        """Cast to a `distrax.Categorical`.
+
+        Returns:
+            A `distrax.Categorical` distribution.
+        """
+        return distrax.Categorical(self.log_p)
 
 
 class Gaussian(eqx.Module):
-    "Gaussian distribution parameters."
+    """Gaussian Distribution (Diagonal)."""
 
     mean: Array
     std: Array
 
-    def density(self, lo: Array, hi: Array) -> tuple[Array, ...]:
-        """Compute the probability density over a given range.
-
-        NOTE that while in principal this function works with high-dimensional
-        distributions, for `D` dimensions with `N` steps each axies, we will have
-        `N^D` points to evaluate (scaling exponentially). One will likely run
-        into memory or runtime issues when `D>=5`.
+    def sample(self, *, key: PRNGKeyArray) -> Array:
+        """Sample from the distribution using the reparametrization trick.
 
         Args:
-            lo (`Array`): Lower bound of the range.
-            hi (`Array`): Upper bound of the range.
+            key (`PRNGKeyArray`): JAX random key.
 
         Returns:
-            A `(n+1)`-tuple containing the x1, x2, ..., xn coordinates of the grid, and
-            the probability density values at each point on the grid.
+            A sample drawn from the Gaussian distribution.
         """
-        xy = jnp.unstack(jnp.linspace(lo, hi, num=100), axis=-1)
-        z = self.to().prob(jnp.stack(jnp.meshgrid(*xy), axis=-1))
-        return (*xy, jnp.array(z))
+        return self.mean + self.std * jr.normal(key, self.std.shape)
 
-    def marginal(self, lo: float, hi: float, *, dim: int) -> tuple[Array, Array]:
-        """Compute the marginal density at a given dimension over a given range.
-
-        Args:
-            lo (`float`): The lower bound of the range.
-            hi (`float`): The upper bound of the range.
-            dim (`int`): The dimension of the marginal.
-
-        Returns:
-            A 2-tuple containing the marginal coordinates `x`
-            and the corresponding probability density values `y`.
-        """
-        x = jnp.arange(lo, hi, min((hi - lo) / 100, 1e-2))
-        y = Normal(self.mean[dim], self.std[dim]).prob(x)
-        return x, jnp.array(y)
-
-    def to(self) -> MvNormal:
+    def to(self) -> distrax.MultivariateNormalDiag:
         """Cast to a `distrax.MultivariateNormalDiag`.
 
         Returns:
             A `distrax.MultivariateNormalDiag` distribution.
         """
-        return MvNormal(self.mean, self.std)
-
-
-class GaussianMixture(eqx.Module):
-    """Mixture of Gaussians distribution parameters."""
-
-    logits: Array
-    means: Array
-    stds: Array
-
-    def density(self, lo: Array, hi: Array) -> tuple[Array, ...]:
-        """Compute the probability density over a given range.
-
-        NOTE that while in principal this function works with high-dimensional
-        distributions, for `D` dimensions with `N` steps each axies, we will have
-        `N^D` points to evaluate (scaling exponentially). One will likely run
-        into memory or runtime issues when `D>=5`.
-
-        Args:
-            lo (`Array`): Lower bound of the range.
-            hi (`Array`): Upper bound of the range.
-
-        Returns:
-            A `(n+1)`-tuple containing the x1, x2, ..., xn coordinates of the grid, and
-            the probability density values at each point on the grid.
-        """
-        xy = jnp.unstack(jnp.linspace(lo, hi, num=100), axis=-1)
-        z = self.to().prob(jnp.stack(jnp.meshgrid(*xy), axis=-1))
-        return (*xy, jnp.array(z))
-
-    def marginal(self, lo: float, hi: float, *, dim: int) -> tuple[Array, Array]:
-        """Compute the marginal density at a given dimension over a given range.
-
-        Args:
-            lo (`float`): The lower bound of the range.
-            hi (`float`): The upper bound of the range.
-            dim (`int`): The dimension of the marginal.
-
-        Returns:
-            A 2-tuple containing the marginal coordinates `x`
-            and the corresponding probability density values `y`.
-        """
-        x = jnp.arange(lo, hi, min((hi - lo) / 100, 1e-2))
-        y = MixtureSameFamily(
-            mixture_distribution=Categorical(self.logits),
-            components_distribution=Normal(self.means[:, dim], self.stds[:, dim]),
-        ).prob(x)
-        return x, jnp.array(y)
-
-    def to(self) -> MixtureSameFamily:
-        """Cast to a `distrax.MixtureSameFamily`.
-
-        Returns:
-            A `distrax.MixtureSameFamily` distribution.
-        """
-        return MixtureSameFamily(
-            mixture_distribution=Categorical(self.logits),
-            components_distribution=MvNormal(self.means, self.stds),
-        )
-
-
-Distribution = Gaussian | GaussianMixture
+        return distrax.MultivariateNormalDiag(self.mean, self.std)
