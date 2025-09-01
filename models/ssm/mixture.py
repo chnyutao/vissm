@@ -6,22 +6,22 @@ import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, PRNGKeyArray
 
-from .distributions import Gaussian
-from .tr import GaussTr
-from .vae import VAE
+from models.distributions import Gaussian, GaussianMixture
+from models.transition import MixtureTr
+from models.vae import GaussVAE
 
 
 class Result(TypedDict):
     posterior: Gaussian
-    prior: Gaussian
+    prior: GaussianMixture
     reconst: Array
 
 
-class SSM(eqx.Module):
-    """State-Space Model with Variational Inference."""
+class MixtureSSM(eqx.Module):
+    """State-Space Model with Gaussian Mixture Prior and Gaussian Posterior."""
 
-    vae: VAE
-    tr: GaussTr
+    vae: GaussVAE
+    tr: MixtureTr
 
     def __call__(
         self,
@@ -41,13 +41,14 @@ class SSM(eqx.Module):
             A dictionary containing model outputs.
         """
         s, a, ns = data  # state, action, next_state
+        key1, key2 = jr.split(key)
         # prior (transition)
-        z = self.vae.encode(s).sample(key=key)
+        z = self.vae.encode(s).sample(key=key1)
         prior = self.tr(z, a)
         # posterior
         posterior = self.vae.encode(ns)
         # reconstruction
-        z = posterior.sample(key=key)
+        z = posterior.sample(key=key2)
         reconst = self.vae.decode(z)
         # return
         return {
@@ -75,14 +76,23 @@ class SSM(eqx.Module):
             A 2-tuple containing the loss and asscoiated metrics.
         """
         batch_size = data[0].shape[0]
-        results = jax.vmap(self)(data, key=jr.split(key, batch_size))
+        key1, key2 = jr.split(key)
+        results = jax.vmap(self)(data, key=jr.split(key1, batch_size))
         # reconstruction error
         x = data[-1]
         x_hat = results['reconst'].reshape(x.shape)
         reconst = jnp.sum((x - x_hat) ** 2, axis=range(1, x.ndim)).mean()
         # kld (posterior || prior)
         posterior, prior = results['posterior'], results['prior']
-        kld = posterior.to().kl_divergence(prior.to()).mean()
+        z = posterior.sample(key=key2)
+        log_qz = jnp.array(posterior.to().log_prob(z))
+        log_pz = jnp.array(prior.to().log_prob(z))
+        kld = (log_qz - log_pz).mean()
         # return loss + metrics
         loss = reconst + kld
-        return loss, {'train/loss': loss, 'train/reconst': reconst, 'train/kld': kld}
+        return loss, {
+            'train/loss': loss,
+            'train/reconst': reconst,
+            'train/kld': kld,
+            'train/entropy': prior.weight.to().entropy().mean(),
+        }

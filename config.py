@@ -7,14 +7,14 @@ class DataConfig:
     batch_size: int = 64
     """Batch size."""
 
+    length: int = 100
+    """Length of each trajectory."""
+
     n: int = 1000
     """Number of trajectories."""
 
     shuffle: bool = True
     """Dataset random shuffling."""
-
-    length: int = 100
-    """Length of each trajectory."""
 
 
 @dataclass
@@ -28,14 +28,14 @@ class ModelConfig:
     latent_size: int = 2
     """Latent distribution dimensionality."""
 
+    prior: Literal['gaussian', 'mixture'] = 'gaussian'
+    """Transition prior distribution."""
+
     posterior: Literal['gaussian'] = 'gaussian'
     """Filtering posterior distribution."""
 
     tau: float = 1e-5
     """Temperature for Gumbel-softmax sampling."""
-
-    tr: Literal['gaussian'] = 'gaussian'
-    """Transition distribution."""
 
 
 @dataclass

@@ -3,12 +3,12 @@ from collections.abc import Callable
 import equinox as eqx
 from jaxtyping import Array
 
-from models.distributions import Gaussian
-from models.utils import GaussNet
+from .distributions import Gaussian
+from .utils import GaussNet
 
 
-class VAE(eqx.Module):
-    """Variational Auto-Encoder."""
+class GaussVAE(eqx.Module):
+    """Gaussian Variational Auto-Encoder."""
 
     encoder: GaussNet
     decoder: Callable[[Array], Array]
@@ -49,3 +49,6 @@ class VAE(eqx.Module):
             Parameters of the Gaussian variational posterior q(z|x).
         """
         return self.encoder(x)
+
+
+VAE = GaussVAE

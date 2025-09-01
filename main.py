@@ -1,7 +1,6 @@
 from functools import partial
 
 import equinox as eqx
-import jax
 import jax.random as jr
 import optax
 import tyro
@@ -10,8 +9,7 @@ from tqdm.auto import tqdm
 
 from config import Config
 from dataset import make_random_walks
-from models.ssm import SSM
-from utils import eval_step, make_tr, make_vae, train_step
+from utils import eval_step, make_model, train_step
 
 # configuration
 config = tyro.cli(Config)
@@ -29,12 +27,8 @@ dataset = make_random_walks(
 )
 
 # init model
-act = getattr(jax.nn, config.model.act)
-key, key1, key2 = jr.split(key, 3)
-model = SSM(
-    vae=make_vae(config, key=key1),
-    tr=make_tr(config, key=key2),
-)
+key, subkey = jr.split(key)
+model = make_model(config, key=subkey)
 
 # init optimizer
 opt = optax.adam(config.lr)

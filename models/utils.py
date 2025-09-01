@@ -27,7 +27,7 @@ class CatNet(eqx.Module):
         Returns:
             A Categorical distribution.
         """
-        log_p = jax.nn.log_softmax(self.net(x))
+        log_p = jax.nn.log_softmax(self.net(x).ravel())
         return Categorical(log_p)
 
 
@@ -47,7 +47,7 @@ class GaussNet(eqx.Module):
         Returns:
             A Gaussian distribution.
         """
-        mean, log_std = jnp.split(self.net(x), 2)
+        mean, log_std = jnp.split(self.net(x).ravel(), 2)
         return Gaussian(mean, jnp.exp(log_std))
 
 

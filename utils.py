@@ -7,13 +7,36 @@ import optax
 from jaxtyping import Array, PRNGKeyArray
 
 from config import Config
-from models.ssm import SSM
-from models.tr import GaussTr
+from models.ssm import SSM, GaussSSM, MixtureSSM
+from models.transition import GaussTr, MixtureTr, Tr
 from models.utils import MLP
-from models.vae import VAE
+from models.vae import VAE, GaussVAE
 
 
-def make_tr(config: Config, *, key: PRNGKeyArray) -> GaussTr:
+def make_model(config: Config, *, key: PRNGKeyArray) -> SSM:
+    """Initialize a state-space model specified by the configuration.
+
+    Args:
+        config (`Config`): Configuration.
+        key (`PRNGKeyArray`): JAX random key.
+
+    Returns:
+        A state-space model.
+    """
+    key1, key2 = jr.split(key)
+    vae = make_vae(config, key=key1)
+    tr = make_tr(config, key=key2)
+    match (vae, tr):
+        case (GaussVAE(), GaussTr()):
+            ssm = GaussSSM(vae=vae, tr=tr)
+        case (GaussVAE(), MixtureTr()):
+            ssm = MixtureSSM(vae=vae, tr=tr)
+        case _:
+            raise TypeError(f'Unsupported combination {type(vae)} and {type(tr)}.')
+    return ssm
+
+
+def make_tr(config: Config, *, key: PRNGKeyArray) -> Tr:
     """
     Initialize a transition function specified by the configuration.
 
@@ -24,16 +47,16 @@ def make_tr(config: Config, *, key: PRNGKeyArray) -> GaussTr:
     Returns:
         A transition function.
     """
-    match config.model.tr:
+    kwds = {'act': getattr(jax.nn, config.model.act), 'key': key}
+    match config.model.prior:
         case 'gaussian':
-            tr = GaussTr(
-                MLP(
-                    config.model.latent_size + 4,
-                    config.model.latent_size * 2,
-                    (config.model.latent_size * 2,) * 2,
-                    key=key,
-                    act=getattr(jax.nn, config.model.act),
-                )
+            tr = GaussTr(state_size=config.model.latent_size, action_size=4, **kwds)
+        case 'mixture':
+            tr = MixtureTr(
+                state_size=config.model.latent_size,
+                action_size=4,
+                k=config.model.k,
+                **kwds,
             )
     return tr
 
@@ -49,26 +72,14 @@ def make_vae(config: Config, *, key: PRNGKeyArray) -> VAE:
     Returns:
         A variational auto-encoder.
     """
-    ekey, dkey = jr.split(key)
     act = getattr(jax.nn, config.model.act)
     latent_size = config.model.latent_size
     match config.model.posterior:
         case 'gaussian':
-            vae = VAE(
-                MLP(
-                    in_size=1 * 64 * 64,
-                    out_size=latent_size * 2,
-                    hidden_sizes=(256, 128),
-                    key=ekey,
-                    act=act,
-                ),
-                MLP(
-                    in_size=latent_size,
-                    out_size=1 * 64 * 64,
-                    hidden_sizes=(128, 256),
-                    key=dkey,
-                    act=act,
-                ),
+            key1, key2 = jr.split(key)
+            vae = GaussVAE(
+                MLP(1 * 64 * 64, latent_size * 2, (256, 128), key=key1, act=act),
+                MLP(latent_size, 1 * 64 * 64, (128, 256), key=key2, act=act),
             )
     return vae
 
@@ -86,7 +97,7 @@ def train_step(
     """Performs a single jitted training step.
 
     Args:
-        model (`Model`): The current model.
+        model (`SSM`): The current model.
         batch (`tuple[Array, Array, Array]`):
             A 3-tuple containing the batched states, actions, and next states.
         opt_state (`optax.OptState`): The current optimizer state.
