@@ -76,18 +76,16 @@ class MixtureSSM(eqx.Module):
             A 2-tuple containing the loss and asscoiated metrics.
         """
         batch_size = data[0].shape[0]
-        key1, key2 = jr.split(key)
-        results = jax.vmap(self)(data, key=jr.split(key1, batch_size))
+        key, *keys = jr.split(key, 1 + batch_size)
+        results = jax.vmap(self)(data, key=jnp.array(keys))
         # reconstruction error
         x = data[-1]
         x_hat = results['reconst'].reshape(x.shape)
         reconst = jnp.sum((x - x_hat) ** 2, axis=range(1, x.ndim)).mean()
         # kld (posterior || prior)
         posterior, prior = results['posterior'], results['prior']
-        z = posterior.sample(key=key2)
-        log_qz = jnp.array(posterior.to().log_prob(z))
-        log_pz = jnp.array(prior.to().log_prob(z))
-        kld = (log_qz - log_pz).mean()
+        z = posterior.sample(key=key)
+        kld = (posterior.to().log_prob(z) - prior.to().log_prob(z)).mean()  # type: ignore
         # return loss + metrics
         loss = reconst + kld
         return loss, {

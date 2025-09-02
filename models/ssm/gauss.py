@@ -82,8 +82,8 @@ class GaussSSM(eqx.Module):
         x_hat = results['reconst'].reshape(x.shape)
         reconst = jnp.sum((x - x_hat) ** 2, axis=range(1, x.ndim)).mean()
         # kld (posterior || prior)
-        posterior, prior = results['posterior'], results['prior']
-        kld = posterior.to().kl_divergence(prior.to()).mean()
+        posterior, prior = results['posterior'].to(), results['prior'].to()
+        kld = posterior.kl_divergence(prior).mean()
         # return loss + metrics
         loss = reconst + kld
         return loss, {'train/loss': loss, 'train/reconst': reconst, 'train/kld': kld}
