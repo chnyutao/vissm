@@ -62,7 +62,7 @@ class MLP(nn.Sequential):
         *,
         key: PRNGKeyArray,
         act: Callable[[Array], Array] = jax.nn.relu,
-    ):
+    ) -> None:
         """Initialize an multi-layer perceptron.
 
         NOTE that the final activation will be dropped.

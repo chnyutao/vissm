@@ -17,7 +17,7 @@ class GaussVAE(eqx.Module):
         self,
         encoder: Callable[[Array], Array],
         decoder: Callable[[Array], Array],
-    ):
+    ) -> None:
         """
         Initialize a variational auto-encoder.
 

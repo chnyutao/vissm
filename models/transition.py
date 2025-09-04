@@ -21,7 +21,7 @@ class GaussTr(eqx.Module):
         *,
         key: PRNGKeyArray,
         **kwds: Any,
-    ):
+    ) -> None:
         """
         Initialize the gaussian transition function.
 
@@ -68,7 +68,7 @@ class MixtureTr(eqx.Module):
         *,
         key: PRNGKeyArray,
         **kwds: Any,
-    ):
+    ) -> None:
         """
         Initialize the gaussian mixture transition function.
 
