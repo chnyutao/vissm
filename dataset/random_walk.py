@@ -8,26 +8,24 @@ from jax import lax
 from jaxtyping import Array, PRNGKeyArray
 
 SIZE = 64
-STEP = 16
+STEP = 8
+ACTION_SPACE = jnp.eye(N=4)
 
 
-def tr(state: Array, move: Array) -> tuple[Array, Array]:
-    """Compute the next state and current observation.
+def obs(state: Array) -> Array:
+    """Render the pixelated observation given the state.
 
     Args:
         state (`Array`): State `(x, y)`.
-        move (`Array`): Move `(dx, dy)`.
 
     Returns:
-        A 2-tuple containing the next state and current observation.
+        Pixelated observation of shape `specs.obs_size`.
     """
-    obs = lax.dynamic_update_slice(
+    return lax.dynamic_update_slice(
         jnp.full((SIZE, SIZE), 0.0),
         jnp.full((STEP, STEP), 1.0),
         state,
     )[jnp.newaxis]
-    next_state = (state + move).clip(0, SIZE - STEP)
-    return next_state, obs
 
 
 def make_random_walks(
@@ -63,17 +61,19 @@ def make_random_walks(
     """
     key1, key2 = jr.split(key)
     # generate actions
-    A = jnp.array([[STEP, 0], [-STEP, 0], [0, STEP], [0, -STEP]])  # action space
-    actions = jax.nn.one_hot(jr.randint(key1, (n, length), *(0, 4)), num_classes=4)
+    n_actions = len(ACTION_SPACE)
+    actions = ACTION_SPACE[jr.randint(key1, (n, length), 0, n_actions)]
     # generate observations
-    moves = A[actions.argmax(axis=-1)]
-    moves *= jr.categorical(key2, jnp.array([p, 1 - p]), shape=(n, length, 1)) + 1
-    _, obs = jax.vmap(lax.scan, in_axes=(None, None, 0))(
-        tr, jnp.full((2,), SIZE // 2), moves
+    moves = jnp.array([[STEP, 0], [-STEP, 0], [0, STEP], [0, -STEP]])
+    noise = jr.categorical(key2, jnp.array([p, 1 - p]), shape=(n, length, 1))
+    _, images = jax.vmap(lax.scan, in_axes=(None, None, 0))(
+        lambda state, move: ((state + move).clip(0, SIZE - STEP), obs(state)),
+        jnp.array([SIZE // 2, SIZE // 2]),
+        moves[actions.argmax(axis=-1)] * (noise + 1),
     )
     # return
-    states = obs[:, :-1].reshape(-1, *obs.shape[2:])
+    states = images[:, :-1].reshape(-1, *images.shape[2:])
     actions = actions[:, :-1].reshape(-1, *actions.shape[2:])
-    next_states = obs[:, 1:].reshape(-1, *obs.shape[2:])
+    next_states = images[:, 1:].reshape(-1, *images.shape[2:])
     dataset = jdl.ArrayDataset(states, actions, next_states, asnumpy=False)
     return jdl.DataLoader(dataset, backend='jax', **kwds)

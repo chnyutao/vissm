@@ -2,11 +2,13 @@ from collections.abc import Callable
 
 import equinox as eqx
 import jax
+import jax.numpy as jnp
 import jax.random as jr
 import optax
 from jaxtyping import Array, PRNGKeyArray
 
 from config import Config
+from dataset import random_walk
 from models.ssm import SSM, GaussSSM, MixtureSSM
 from models.transition import GaussTr, MixtureTr, Tr
 from models.utils import MLP
@@ -48,13 +50,20 @@ def make_tr(config: Config, *, key: PRNGKeyArray) -> Tr:
         A transition function.
     """
     kwds = {'act': getattr(jax.nn, config.model.act), 'key': key}
+    match config.dataset.name:
+        case 'random_walk':
+            action_size = len(random_walk.ACTION_SPACE)
     match config.model.prior:
         case 'gaussian':
-            tr = GaussTr(state_size=config.model.latent_size, action_size=4, **kwds)
+            tr = GaussTr(
+                state_size=config.model.latent_size,
+                action_size=action_size,
+                **kwds,
+            )
         case 'mixture':
             tr = MixtureTr(
                 state_size=config.model.latent_size,
-                action_size=4,
+                action_size=action_size,
                 k=config.model.k,
                 **kwds,
             )
@@ -74,12 +83,16 @@ def make_vae(config: Config, *, key: PRNGKeyArray) -> VAE:
     """
     act = getattr(jax.nn, config.model.act)
     latent_size = config.model.latent_size
+    match config.dataset.name:
+        case 'random_walk':
+            input_size = jnp.array([1, random_walk.SIZE, random_walk.SIZE])
     match config.model.posterior:
         case 'gaussian':
             key1, key2 = jr.split(key)
+            input_size = int(input_size.prod())
             vae = GaussVAE(
-                MLP(1 * 64 * 64, latent_size * 2, (256, 128), key=key1, act=act),
-                MLP(latent_size, 1 * 64 * 64, (128, 256), key=key2, act=act),
+                MLP(input_size, latent_size * 2, (256, 128), key=key1, act=act),
+                MLP(latent_size, input_size, (128, 256), key=key2, act=act),
             )
     return vae
 
