@@ -5,7 +5,9 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
+import wandb
 from jaxtyping import Array, PRNGKeyArray
+from matplotlib import pyplot as plt
 
 from config import Config
 from dataset import random_walk
@@ -13,6 +15,7 @@ from models.ssm import SSM, GaussSSM, MixtureSSM
 from models.transition import GaussTr, MixtureTr, Tr
 from models.utils import MLP
 from models.vae import VAE, GaussVAE
+from plots import Heatmap
 
 
 def make_model(config: Config, *, key: PRNGKeyArray) -> SSM:
@@ -103,21 +106,21 @@ def train_step(
     batch: tuple[Array, Array, Array],
     opt_state: optax.OptState,
     *,
+    callback: Callable[..., None] = lambda _: None,
     key: PRNGKeyArray,
     opt: optax.GradientTransformation,
-    callback: Callable[..., None] = lambda _: None,
 ) -> tuple[SSM, optax.OptState]:
-    """Performs a single jitted training step.
+    """Perform a single jitted training step.
 
     Args:
         model (`SSM`): The current model.
         batch (`tuple[Array, Array, Array]`):
             A 3-tuple containing the batched states, actions, and next states.
         opt_state (`optax.OptState`): The current optimizer state.
-        key (`PRNGKeyArray`): JAX random key.
-        opt (`optax.GradientTransformation`): The current optimizer.
         callback (`Callable[..., None]`, optional):
             Callback function for processing metrics. Default to `lambda _: None`.
+        key (`PRNGKeyArray`): JAX random key.
+        opt (`optax.GradientTransformation`): The current optimizer.
 
     Returns:
         A 2-tuple containing the updated model, the updated optimizer state.
@@ -136,16 +139,36 @@ def train_step(
 def eval_step(
     model: SSM,
     *,
-    key: PRNGKeyArray,
     callback: Callable[..., None] = lambda _: None,
+    key: PRNGKeyArray,
 ) -> None:
     """Perform a single evaluation step between or after training epochs.
 
     Args:
         model (`SSM`): The current model.
-        key (`PRNGKeyArray`): JAX random key.
         callback (`Callable[..., None]`, optional):
             Callback function for processing metrics. Default to `lambda _: None`.
+        key (`PRNGKeyArray`): JAX random key.
     """
     metrics = {}
+    # heatmap
+    size, step = random_walk.SIZE, random_walk.STEP
+    s0 = random_walk.obs(jnp.array([size // 2, size // 2]))
+    a = random_walk.ACTION_SPACE[0]
+    s1 = random_walk.obs(jnp.array([size // 2 + step, size // 2]))
+    s2 = random_walk.obs(jnp.array([size // 2 + step * 2, size // 2]))
+    heatmap = Heatmap().show(
+        prior=model.tr(model.vae.encode(s0).sample(key=key), a),
+        posteriors=[
+            model.vae.encode(s1),
+            model.vae.encode(s2),
+        ],
+        cfgs=[
+            {'alpha': 0.4, 'color': 'darkorange', 'label': 'posterior/1'},
+            {'alpha': 0.8, 'color': 'lavender', 'label': 'posterior/2'},
+        ],
+    )
+    metrics['eval/heatmap'] = wandb.Image(heatmap.fig)
+    # callback
     jax.debug.callback(callback, metrics)
+    plt.close('all')

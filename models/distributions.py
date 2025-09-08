@@ -93,3 +93,6 @@ class GaussianMixture(eqx.Module):
             mixture_distribution=self.weight.to(),
             components_distribution=self.components.to(),
         )
+
+
+Distribution = Categorical | Gaussian | GaussianMixture
