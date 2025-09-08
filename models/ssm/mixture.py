@@ -84,8 +84,23 @@ class MixtureSSM(eqx.Module):
         reconst = jnp.sum((x - x_hat) ** 2, axis=range(1, x.ndim)).mean()
         # kld (posterior || prior)
         posterior, prior = results['posterior'], results['prior']
+        ## 1. monte-carlo estimation
         z = posterior.sample(key=key)
-        kld = (posterior.to().log_prob(z) - prior.to().log_prob(z)).mean()  # type: ignore
+        logp = jnp.array(prior.to().log_prob(z))
+        logq = jnp.array(posterior.to().log_prob(z))
+        logr = logp - logq
+        kld = ((jnp.exp(logr) - 1) - logr).mean()
+        ## 2. upper bound
+        pi = jnp.exp(prior.weight.log_p)
+        klds = jax.vmap(lambda q, p: q.to().kl_divergence(p.to()), in_axes=(None, 1))(
+            posterior,  # batch_size * latent_size
+            prior.components,  # batch_size * n_components * latent_size
+        )
+        kld = jnp.einsum('bk,kb->b', pi, klds).mean()
+        ## 3. monte-carlo upper bound
+        indices = (jnp.arange(batch_size), prior.weight.sample(key=key).argmax(axis=-1))
+        component = jax.tree.map(lambda x: x[indices], prior.components)
+        kld = posterior.to().kl_divergence(component.to()).mean()
         # return loss + metrics
         loss = reconst + kld
         return loss, {
