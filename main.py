@@ -19,11 +19,11 @@ wandb.init(project='vissm', config=config.asdict())
 # init dataset
 key, subkey = jr.split(key)
 dataset = make_random_walks(
-    config.data.n,
-    config.data.length,
+    config.dataset.n,
+    config.dataset.length,
     key=subkey,
-    batch_size=config.data.batch_size,
-    shuffle=config.data.shuffle,
+    batch_size=config.dataset.batch_size,
+    shuffle=config.dataset.shuffle,
 )
 
 # init model

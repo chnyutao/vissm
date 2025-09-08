@@ -3,7 +3,7 @@ from typing import Literal
 
 
 @dataclass
-class DataConfig:
+class DatasetConfig:
     batch_size: int = 64
     """Batch size."""
 
@@ -12,6 +12,9 @@ class DataConfig:
 
     n: int = 1000
     """Number of trajectories."""
+
+    name: Literal['random_walk'] = 'random_walk'
+    """Name of the dataset."""
 
     shuffle: bool = True
     """Dataset random shuffling."""
@@ -40,7 +43,7 @@ class ModelConfig:
 
 @dataclass
 class Config:
-    data: DataConfig
+    dataset: DatasetConfig
     """Dataset configuration."""
 
     model: ModelConfig
