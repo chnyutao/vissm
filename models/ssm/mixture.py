@@ -91,7 +91,7 @@ class MixtureSSM(eqx.Module):
         logr = logp - logq
         kld = ((jnp.exp(logr) - 1) - logr).mean()
         ## 2. upper bound
-        pi = jnp.exp(prior.weight.log_p)
+        pi = jnp.exp(prior.weight.logits)
         klds = jax.vmap(lambda q, p: q.to().kl_divergence(p.to()), in_axes=(None, 1))(
             posterior,  # batch_size * latent_size
             prior.components,  # batch_size * n_components * latent_size

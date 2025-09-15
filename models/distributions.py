@@ -9,7 +9,7 @@ from jaxtyping import Array, PRNGKeyArray
 class Categorical(eqx.Module):
     """Categorical Distribution."""
 
-    log_p: Array
+    logits: Array
 
     def sample(self, tau: float = 1e-5, *, key: PRNGKeyArray) -> Array:
         """Sample from the distribution using the reparametrization trick.
@@ -21,8 +21,9 @@ class Categorical(eqx.Module):
         Returns:
             A sample drawn from the Categorical distribution.
         """
-        gumbel = jr.gumbel(key, self.log_p.shape)
-        return jnp.exp(jax.nn.log_softmax((self.log_p + gumbel) / tau))
+        gumbel = jr.gumbel(key, self.logits.shape)
+        log_p = jax.nn.log_softmax(self.logits)
+        return jnp.exp(jax.nn.log_softmax((log_p + gumbel) / tau))
 
     def to(self) -> distrax.Categorical:
         """Cast to a `distrax.OneHotCategorical`.
@@ -30,7 +31,7 @@ class Categorical(eqx.Module):
         Returns:
             A `distrax.OneHotCategorical` distribution.
         """
-        return distrax.OneHotCategorical(self.log_p)
+        return distrax.OneHotCategorical(self.logits)
 
 
 class Gaussian(eqx.Module):

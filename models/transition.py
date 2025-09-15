@@ -110,7 +110,7 @@ class MixtureTr(eqx.Module):
         """
         weight = self.weight(z, a)
         components = jax.vmap(self.component, in_axes=(None, None, 0))(
-            z, a, jnp.diag(jnp.ones_like(weight.log_p))
+            z, a, jnp.diag(jnp.ones_like(weight.logits))
         )
         return GaussianMixture(weight, components)
 
