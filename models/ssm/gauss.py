@@ -7,8 +7,8 @@ import jax.random as jr
 from jaxtyping import Array, PRNGKeyArray
 
 from models.distributions import Gaussian
-from models.transition import GaussTr
-from models.vae import GaussVAE
+from models.ssm.transition import GaussTr
+from models.ssm.vae import GaussVAE
 
 
 class Result(TypedDict):

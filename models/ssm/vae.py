@@ -3,8 +3,8 @@ from collections.abc import Callable
 import equinox as eqx
 from jaxtyping import Array
 
-from .distributions import Gaussian
-from .utils import GaussNet
+from models.distributions import Gaussian
+from models.utils import GaussNet
 
 
 class GaussVAE(eqx.Module):

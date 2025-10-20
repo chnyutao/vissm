@@ -5,8 +5,8 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
-from .distributions import Categorical, Gaussian, GaussianMixture
-from .utils import MLP, CatNet, GaussNet
+from models.distributions import Categorical, Gaussian, GaussianMixture
+from models.utils import MLP, CatNet, GaussNet
 
 
 class GaussTr(eqx.Module):
