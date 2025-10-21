@@ -93,3 +93,17 @@ class MLP(nn.Sequential):
             Outupt array, shape determined by the last layer.
         """
         return super().__call__(x.ravel())
+
+
+@jax.custom_jvp
+def ngd(dist: Gaussian) -> Gaussian:
+    return dist
+
+
+@ngd.defjvp
+def _(primals: tuple[Gaussian], tangents: tuple[Gaussian]) -> tuple[Gaussian, Gaussian]:
+    dist, grads = *primals, *tangents
+    return dist, Gaussian(
+        mean=grads.mean * (dist.std**2),
+        std=grads.std / 2.0 * (dist.std**2),
+    )

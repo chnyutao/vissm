@@ -1,174 +1,143 @@
-from collections.abc import Callable
-
 import equinox as eqx
 import jax
-import jax.numpy as jnp
-import jax.random as jr
+import jax_dataloader as jdl
 import optax
 import wandb
-from jaxtyping import Array, PRNGKeyArray
+from jaxtyping import Array, PRNGKeyArray, PyTree
 from matplotlib import pyplot as plt
 
+import plots
 from config import Config
-from dataset import random_walk
-from models.ssm import SSM, GaussSSM, MixtureSSM
-from models.transition import GaussTr, MixtureTr, Tr
-from models.utils import MLP
-from models.vae import VAE, GaussVAE
-from plots import Heatmap
+from dataset import bimodal, make_bimodal, make_random_walks, make_sinusoid_waves
+from models import GaussianMixtureModel
 
 
-def make_model(config: Config, *, key: PRNGKeyArray) -> SSM:
-    """Initialize a state-space model specified by the configuration.
+def make_dataset(config: Config, *, key: PRNGKeyArray) -> jdl.DataLoader:
+    """Initialize a dataset specified by the configuration.
 
     Args:
         config (`Config`): Configuration.
         key (`PRNGKeyArray`): JAX random key.
 
     Returns:
-        A state-space model.
+        A `jax_dataloader.DataLoader`.
     """
-    key1, key2 = jr.split(key)
-    vae = make_vae(config, key=key1)
-    tr = make_tr(config, key=key2)
-    match (vae, tr):
-        case (GaussVAE(), GaussTr()):
-            ssm = GaussSSM(vae=vae, tr=tr)
-        case (GaussVAE(), MixtureTr()):
-            ssm = MixtureSSM(vae=vae, tr=tr)
-        case _:
-            raise TypeError(f'Unsupported combination {type(vae)} and {type(tr)}.')
-    return ssm
-
-
-def make_tr(config: Config, *, key: PRNGKeyArray) -> Tr:
-    """
-    Initialize a transition function specified by the configuration.
-
-    Args:
-        config (`Config`): Configuration.
-        key (`PRNGKeyArray`): JAX random key.
-
-    Returns:
-        A transition function.
-    """
-    kwds = {'act': getattr(jax.nn, config.model.act), 'key': key}
     match config.dataset.name:
+        case 'bimodal':
+            dataset = make_bimodal(
+                config.dataset.n,
+                key=key,
+                batch_size=config.dataset.batch_size,
+                shuffle=config.dataset.shuffle,
+            )
         case 'random_walk':
-            action_size = len(random_walk.ACTION_SPACE)
-    match config.model.prior:
-        case 'gaussian':
-            tr = GaussTr(
-                state_size=config.model.latent_size,
-                action_size=action_size,
-                **kwds,
+            dataset = make_random_walks(
+                config.dataset.n,
+                config.dataset.length,
+                key=key,
+                batch_size=config.dataset.batch_size,
+                shuffle=config.dataset.shuffle,
             )
-        case 'mixture':
-            tr = MixtureTr(
-                state_size=config.model.latent_size,
-                action_size=action_size,
-                k=config.model.k,
-                **kwds,
+        case 'sinusoid':
+            dataset = make_sinusoid_waves(
+                config.dataset.n,
+                key=key,
+                batch_size=config.dataset.batch_size,
+                shuffle=config.dataset.shuffle,
             )
-    return tr
+    return dataset
 
 
-def make_vae(config: Config, *, key: PRNGKeyArray) -> VAE:
-    """
-    Initialize a variational auto-encoder specified by the configuration.
+def make_model(config: Config, *, key: PRNGKeyArray) -> GaussianMixtureModel:
+    """Initialize a model specified by the configuration.
 
     Args:
         config (`Config`): Configuration.
         key (`PRNGKeyArray`): JAX random key.
 
     Returns:
-        A variational auto-encoder.
+        A PyTree representation of the parametrized model .
     """
-    act = getattr(jax.nn, config.model.act)
-    latent_size = config.model.latent_size
     match config.dataset.name:
-        case 'random_walk':
-            input_size = jnp.array([1, random_walk.SIZE, random_walk.SIZE])
-    match config.model.posterior:
-        case 'gaussian':
-            key1, key2 = jr.split(key)
-            input_size = int(input_size.prod())
-            vae = GaussVAE(
-                MLP(input_size, latent_size * 2, (256, 128), key=key1, act=act),
-                MLP(latent_size, input_size, (128, 256), key=key2, act=act),
+        case 'bimodal':
+            model = GaussianMixtureModel(
+                config.model.k,
+                config.model.n,
+                config.model.loss,
+                key=key,
             )
-    return vae
+        case 'random_walk':
+            raise NotImplementedError
+        case 'sinusoid':
+            raise NotImplementedError
+    return model
+
+
+def make_opt(
+    config: Config,
+    model: PyTree,
+) -> tuple[optax.GradientTransformation, optax.OptState]:
+    """Initialize an optimizer specified by the configuration.
+
+    Args:
+        config (`Config`): Configuration.
+
+    Returns:
+        An `optax.GradientTransformation`.
+    """
+    match config.opt.name:
+        case 'adam':
+            opt = optax.adam(config.opt.lr)
+        case 'sgd':
+            opt = optax.sgd(config.opt.lr)
+    opt_state = opt.init(eqx.filter(model, eqx.is_array))
+    return opt, opt_state
 
 
 @eqx.filter_jit
 def train_step(
-    model: SSM,
-    batch: tuple[Array, Array, Array],
+    model: PyTree,
+    batch: tuple[Array, ...],
     opt_state: optax.OptState,
     *,
-    callback: Callable[..., None] = lambda _: None,
+    config: Config,
     key: PRNGKeyArray,
     opt: optax.GradientTransformation,
-) -> tuple[SSM, optax.OptState]:
+):
     """Perform a single jitted training step.
 
     Args:
-        model (`SSM`): The current model.
-        batch (`tuple[Array, Array, Array]`):
-            A 3-tuple containing the batched states, actions, and next states.
+        model (`PyTree`): The current model.
+        batch (`tuple[Array, ...]`): A 1-tuple containing the batched data.
         opt_state (`optax.OptState`): The current optimizer state.
-        callback (`Callable[..., None]`, optional):
-            Callback function for processing metrics. Default to `lambda _: None`.
+        config (`Config`): The current configuration.
         key (`PRNGKeyArray`): JAX random key.
         opt (`optax.GradientTransformation`): The current optimizer.
 
     Returns:
-        A 2-tuple containing the updated model, the updated optimizer state.
+        A 2-tuple containing the updated model, and the updated optimizer state.
     """
-    [_, metrics], grads = model.loss_fn(batch, key=key)
-    updates, opt_state = opt.update(
-        grads,
-        opt_state,
-        eqx.filter(model, eqx.is_array),
-    )
-    model = eqx.apply_updates(model, updates)
-    jax.debug.callback(callback, metrics)
-    return model, opt_state
+    (_, metrics), grads = model.loss_fn(*batch)
+    updates, opt_state = opt.update(grads, opt_state)
+    jax.debug.callback(wandb.log, metrics)
+    return eqx.apply_updates(model, updates), opt_state
 
 
-def eval_step(
-    model: SSM,
-    *,
-    callback: Callable[..., None] = lambda _: None,
-    key: PRNGKeyArray,
-) -> None:
-    """Perform a single evaluation step between or after training epochs.
+def eval_step(model: PyTree, *, config: Config, key: PRNGKeyArray) -> None:
+    """Perform a single evaluation step.
 
     Args:
-        model (`SSM`): The current model.
-        callback (`Callable[..., None]`, optional):
-            Callback function for processing metrics. Default to `lambda _: None`.
+        model (`PyTree`): The current model.
+        config (`Config`): The current configuration.
         key (`PRNGKeyArray`): JAX random key.
     """
-    metrics = {}
-    # heatmap
-    size, step = random_walk.SIZE, random_walk.STEP
-    s0 = random_walk.obs(jnp.array([size // 2, size // 2]))
-    a = random_walk.ACTION_SPACE[0]
-    s1 = random_walk.obs(jnp.array([size // 2 + step, size // 2]))
-    s2 = random_walk.obs(jnp.array([size // 2 + step * 2, size // 2]))
-    heatmap = Heatmap().show(
-        prior=model.tr(model.vae.encode(s0).sample(key=key), a),
-        posteriors=[
-            model.vae.encode(s1),
-            model.vae.encode(s2),
-        ],
-        cfgs=[
+    heatmap = plots.Heatmap().show(
+        model,
+        bimodal.dists,
+        [
             {'alpha': 0.4, 'color': 'darkorange', 'label': 'posterior/1'},
             {'alpha': 0.8, 'color': 'lavender', 'label': 'posterior/2'},
         ],
     )
-    metrics['eval/heatmap'] = wandb.Image(heatmap.fig)
-    # callback
-    jax.debug.callback(callback, metrics)
+    jax.debug.callback(wandb.log, {'heatmap': wandb.Image(heatmap.fig)})
     plt.close('all')

@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Literal
 
 
@@ -8,12 +8,15 @@ class DatasetConfig:
     """Batch size."""
 
     length: int = 100
-    """Length of each trajectory."""
+    """Length of each trajectory (in random walk)."""
 
     n: int = 1000
-    """Number of trajectories."""
+    """
+    Number of data points (in bimodal / sinusoid), or
+    number of trajectories (in random walk).
+    """
 
-    name: Literal['random_walk'] = 'random_walk'
+    name: Literal['bimodal', 'random_walk', 'sinusoid'] = 'bimodal'
     """Name of the dataset."""
 
     shuffle: bool = True
@@ -23,40 +26,62 @@ class DatasetConfig:
 @dataclass
 class ModelConfig:
     act: str = 'relu'
-    """The activation function (in `jax.nn.*`)."""
+    """The activation function in `jax.nn`."""
+
+    density: Literal['gaussian', 'mixture'] = 'mixture'
+    """Output distribution family."""
 
     k: int = 2
     """Number of mixture components."""
 
-    latent_size: int = 2
-    """Latent distribution dimensionality."""
+    loss: Literal['mle', 'ngem', 'sgem'] = 'ngem'
+    """
+    Loss functions:
+    - `mle` Maximum likelihood,
+    - `ngem` Natural gradient expectation maximization,
+    - `sgem` Stochastic gradient expectation maximization.
+    """
 
-    prior: Literal['gaussian', 'mixture'] = 'gaussian'
-    """Transition prior distribution."""
+    n: int = 2
+    """Dimensionality of each mixture component."""
 
-    posterior: Literal['gaussian'] = 'gaussian'
-    """Filtering posterior distribution."""
 
-    tau: float = 1e-5
-    """Temperature for Gumbel-softmax sampling."""
+@dataclass
+class OptConfig:
+    name: Literal['adam', 'sgd'] = 'sgd'
+    """Name of the `optax` optimizer."""
+
+    lr: float = 1e-4
+    """Learning rate."""
 
 
 @dataclass
 class Config:
-    dataset: DatasetConfig
+    dataset: DatasetConfig = field(default_factory=DatasetConfig)
     """Dataset configuration."""
 
-    model: ModelConfig
+    model: ModelConfig = field(default_factory=ModelConfig)
     """Model configuration."""
+
+    opt: OptConfig = field(default_factory=OptConfig)
+    """Optimizer configuration."""
 
     epochs: int = 100
     """Epochs."""
-
-    lr: float = 1e-4
-    """Learning rate."""
 
     seed: int = 42
     """Random seed."""
 
     def asdict(self) -> dict:
         return asdict(self)
+
+
+default_configs = {
+    'bimodal': (
+        'Run bimodal experiments.',
+        Config(
+            dataset=DatasetConfig(batch_size=1, n=100, name='bimodal'),
+            epochs=10,
+        ),
+    )
+}

@@ -2,8 +2,15 @@ from typing import Any
 
 import jax.numpy as jnp
 import jax_dataloader as jdl
-from distrax import MixtureOfTwo, Normal
+from distrax import MixtureOfTwo
 from jaxtyping import PRNGKeyArray
+
+from models.distributions import Gaussian
+
+dists = [
+    Gaussian(jnp.ones((2,)), jnp.ones((2,)) / 10),
+    Gaussian(-jnp.ones((2,)), jnp.ones((2,)) / 10),
+]
 
 
 def make_bimodal(n: int, *, key: PRNGKeyArray, **kwds: Any) -> jdl.DataLoader:
@@ -19,12 +26,10 @@ def make_bimodal(n: int, *, key: PRNGKeyArray, **kwds: Any) -> jdl.DataLoader:
         one of the two normal distributions.
     """
     # generate data
-    dists = MixtureOfTwo(
+    x = MixtureOfTwo(
         0.5,
-        Normal(jnp.ones((2,)), jnp.ones((2,)) / 10),
-        Normal(-jnp.ones((2,)), jnp.ones((2,)) / 10),
-    )
-    x = dists.sample(seed=key, sample_shape=(n,))
+        *[dist.to() for dist in dists],
+    ).sample(seed=key, sample_shape=(n,))
     # return
     dataset = jdl.ArrayDataset(x, asnumpy=False)
     return jdl.DataLoader(dataset, backend='jax', **kwds)
