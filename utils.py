@@ -167,6 +167,5 @@ def eval_step(
     elif config.dataset.name == 'sinusoid':
         options = ({'color': 'tab:blue'}, {'color': 'tab:orange'})
         sinusoid = plots.Sinusoid().show(model, options)
-        sinusoid.fig.savefig('out.png')
         jax.debug.callback(callback, {'sinusoid': wandb.Image(sinusoid.fig)})
     plt.close('all')
