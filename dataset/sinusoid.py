@@ -5,6 +5,9 @@ import jax.random as jr
 import jax_dataloader as jdl
 from jaxtyping import PRNGKeyArray
 
+lims = (0.0, 4 * jnp.pi)
+f = (lambda x: jnp.sin(x), lambda x: jnp.sin(x + jnp.pi))
+
 
 def make_sinusoid_waves(n: int, *, key: PRNGKeyArray, **kwds: Any) -> jdl.DataLoader:
     """Generate a dataset containing noisy sinusoid waves.
@@ -21,9 +24,9 @@ def make_sinusoid_waves(n: int, *, key: PRNGKeyArray, **kwds: Any) -> jdl.DataLo
     """
     key1, key2, key2 = jr.split(key, 3)
     # generate data
-    x = jr.uniform(key1, (n, 1), minval=0, maxval=4 * jnp.pi)
-    y1 = jnp.sin(x) + jr.normal(key2, (n, 1)) * 0.01
-    y2 = jnp.sin(x + jnp.pi) + jr.normal(key2, (n, 1)) * 0.01
+    x = jr.uniform(key1, (n, 1), minval=lims[0], maxval=lims[1])
+    y1 = f[0](x) + jr.normal(key2, (n, 1)) * 0.01
+    y2 = f[1](x) + jr.normal(key2, (n, 1)) * 0.01
     # return
     dataset = jdl.ArrayDataset(
         jnp.concat([x, x]),

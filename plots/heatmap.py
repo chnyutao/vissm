@@ -38,25 +38,25 @@ class Heatmap:
 
     def show(
         self,
-        prior: Distribution,
-        posteriors: Sequence[Distribution],
-        cfgs: Sequence[dict[str, Any]],
+        q: Distribution,
+        ps: Sequence[Distribution],
+        options: Sequence[dict[str, Any]],
     ) -> Self:
         """Display a distribution heatmap plot for the priors and posteriors.
 
         Args:
-            prior (`Distribution`): Prior distribution.
-            posteriors (`Sequence[Distribution]`): Posterior distributions.
-            cfgs (`Sequence[dict[str, Any]]`): Configs for posterior distributions.
+            q (`Distribution`): Learned distribution.
+            ps (`Sequence[Distribution]`): Target (reference) distributions.
+            options (`Sequence[dict[str, Any]]`): Options for target distributions.
 
         Returns:
             The current instance `self`, allowing chaining methods.
         """
-        self._heatmap(prior)
-        for posterior, cfg in zip(posteriors, cfgs):
-            self._marginal(posterior, **cfg)
-            self._mean(posterior, color=cfg.get('color') or cfg.get('c'))
-        self._marginal(prior, alpha=0.2, color='k', hatch='///', label='prior')
+        self._heatmap(q)
+        for p, cfg in zip(ps, options):
+            self._marginal(p, **cfg)
+            self._mean(p, color=cfg.get('color') or cfg.get('c'))
+        self._marginal(q, alpha=0.2, color='k', hatch='///', label='prior')
         return self
 
     def _heatmap(self, dist: Distribution) -> None:
@@ -76,8 +76,8 @@ class Heatmap:
                 hi = (means + 2 * stds).max(axis=0)
                 d = (hi - lo).max() - (hi - lo)
                 lo, hi = lo - d / 2, hi + d / 2
-            case dist:
-                raise TypeError(f'Unsupported distribution {type(dist)}')
+            case _:
+                raise NotImplementedError
         x, y = jnp.unstack(jnp.linspace(lo, hi, num=100), axis=-1)
         z = dist.to().prob(jnp.stack(jnp.meshgrid(x, y), axis=-1))
         # heatmap
@@ -122,8 +122,8 @@ class Heatmap:
                 case GaussianMixture(weight, Gaussian(means, stds)):
                     means, stds = means[..., idx], stds[..., idx]
                     marginal = GaussianMixture(weight, Gaussian(means, stds)).to()
-                case dist:
-                    raise TypeError(f'Unsupported distribution {type(dist)}')
+                case _:
+                    raise NotImplementedError
             xy.append((x, marginal.prob(x)))
         (x1, y1), (x2, y2) = xy
         # marginal x

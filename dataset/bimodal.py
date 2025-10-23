@@ -26,10 +26,8 @@ def make_bimodal(n: int, *, key: PRNGKeyArray, **kwds: Any) -> jdl.DataLoader:
         one of the two normal distributions.
     """
     # generate data
-    x = MixtureOfTwo(
-        0.5,
-        *[dist.to() for dist in dists],
-    ).sample(seed=key, sample_shape=(n,))
+    mixture = MixtureOfTwo(0.5, *[dist.to() for dist in dists])
+    x = mixture.sample(seed=key, sample_shape=(n,))
     # return
     dataset = jdl.ArrayDataset(x, asnumpy=False)
     return jdl.DataLoader(dataset, backend='jax', **kwds)

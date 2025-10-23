@@ -2,7 +2,6 @@ from collections.abc import Callable
 
 import equinox as eqx
 import jax
-import jax.numpy as jnp
 import jax.random as jr
 import jax_dataloader as jdl
 import optax
@@ -10,9 +9,10 @@ import wandb
 from jaxtyping import Array, PRNGKeyArray, PyTree
 from matplotlib import pyplot as plt
 
+import dataset
 import plots
 from config import Config
-from dataset import bimodal, make_bimodal, make_random_walks, make_sinusoid_waves
+from dataset import make_bimodal, make_random_walks, make_sinusoid_waves
 from models import GaussianMixtureModel, GaussianNetwork, MixtureDensityNetwork
 from models.utils import MLP
 
@@ -157,28 +157,16 @@ def eval_step(
         config (`Config`): The current configuration.
         key (`PRNGKeyArray`): JAX random key.
     """
-    # TODO fix eval_step
     if config.dataset.name == 'bimodal':
-        heatmap = plots.Heatmap().show(
-            model,
-            bimodal.dists,
-            [
-                {'alpha': 0.4, 'color': 'darkorange', 'label': 'posterior/1'},
-                {'alpha': 0.8, 'color': 'lavender', 'label': 'posterior/2'},
-            ],
+        options = (
+            {'alpha': 0.4, 'color': 'darkorange', 'label': 'posterior/1'},
+            {'alpha': 0.8, 'color': 'lavender', 'label': 'posterior/2'},
         )
+        heatmap = plots.Heatmap().show(model, dataset.bimodal.dists, options)
         jax.debug.callback(callback, {'heatmap': wandb.Image(heatmap.fig)})
-        plt.close('all')
     elif config.dataset.name == 'sinusoid':
-        x = jnp.arange(0, 4 * jnp.pi, 1e-2)
-        dists = jax.vmap(model)(x)
-        if config.model.density == 'gaussian':
-            plt.plot(x, dists.mean, label='mean')
-        elif config.model.density == 'mixture':
-            plt.plot(x, dists.components.mean[:, 0], label='mode 1')
-            plt.plot(x, dists.components.mean[:, 1], label='mode 2')
-        plt.plot(x, jnp.sin(x), c='gray', linewidth=10, alpha=0.2)
-        plt.plot(x, jnp.sin(x + jnp.pi), c='gray', linewidth=10, alpha=0.2)
-        plt.legend()
-        jax.debug.callback(callback, {'sinusoid': wandb.Image(plt)})
-        plt.clf()
+        options = ({'color': 'tab:blue'}, {'color': 'tab:orange'})
+        sinusoid = plots.Sinusoid().show(model, options)
+        sinusoid.fig.savefig('out.png')
+        jax.debug.callback(callback, {'sinusoid': wandb.Image(sinusoid.fig)})
+    plt.close('all')
