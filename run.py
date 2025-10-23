@@ -21,13 +21,14 @@ model = make_model(config, key=mkey)
 opt, opt_state = make_opt(config, model)
 
 # main loop
-train_step = partial(train_step, config=config, opt=opt)
-eval_step = partial(eval_step, config=config)
+train_step = partial(train_step, callback=wandb.log, opt=opt)
+eval_step = partial(eval_step, callback=wandb.log, config=config)
 for epoch in tqdm(range(config.epochs)):
-    # eval
-    key, subkey = jr.split(key)
-    eval_step(model, key=subkey)
-    # train
+    ## eval
+    if epoch % config.log_every == 0:
+        key, subkey = jr.split(key)
+        eval_step(model, key=subkey)
+    ## train
     for batch in dataset:
         key, subkey = jr.split(key)
         model, opt_state = train_step(model, batch, opt_state, key=subkey)

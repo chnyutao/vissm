@@ -26,18 +26,21 @@ class DatasetConfig:
 @dataclass
 class ModelConfig:
     act: str = 'relu'
-    """The activation function in `jax.nn`."""
+    """Activation function in `jax.nn`."""
 
     density: Literal['gaussian', 'mixture'] = 'mixture'
-    """Output distribution family."""
+    """Model output density family."""
+
+    hidden_sizes: tuple[int, ...] = ()
+    """MLP hidden layer sizes."""
 
     k: int = 2
     """Number of mixture components."""
 
-    loss: Literal['mle', 'ngem', 'sgem'] = 'ngem'
+    loss: Literal['ngem', 'nll', 'sgem'] = 'ngem'
     """
     Loss functions:
-    - `mle` Maximum likelihood,
+    - `nll` Negative log-likelihood,
     - `ngem` Natural gradient expectation maximization,
     - `sgem` Stochastic gradient expectation maximization.
     """
@@ -69,6 +72,9 @@ class Config:
     epochs: int = 100
     """Epochs."""
 
+    log_every: int = 1
+    """Log evaluation metrics every `log_every` epochs."""
+
     seed: int = 42
     """Random seed."""
 
@@ -82,6 +88,16 @@ default_configs = {
         Config(
             dataset=DatasetConfig(batch_size=1, n=100, name='bimodal'),
             epochs=10,
+            log_every=1,
         ),
-    )
+    ),
+    'sinusoid': (
+        'Run sinusoid experiments.',
+        Config(
+            dataset=DatasetConfig(batch_size=10, n=1000, name='sinusoid'),
+            model=ModelConfig(act='sigmoid', hidden_sizes=(100, 100, 100), n=1),
+            epochs=1000,
+            log_every=100,
+        ),
+    ),
 }

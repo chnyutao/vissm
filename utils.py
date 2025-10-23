@@ -1,5 +1,9 @@
+from collections.abc import Callable
+
 import equinox as eqx
 import jax
+import jax.numpy as jnp
+import jax.random as jr
 import jax_dataloader as jdl
 import optax
 import wandb
@@ -9,7 +13,8 @@ from matplotlib import pyplot as plt
 import plots
 from config import Config
 from dataset import bimodal, make_bimodal, make_random_walks, make_sinusoid_waves
-from models import GaussianMixtureModel
+from models import GaussianMixtureModel, GaussianNetwork, MixtureDensityNetwork
+from models.utils import MLP
 
 
 def make_dataset(config: Config, *, key: PRNGKeyArray) -> jdl.DataLoader:
@@ -48,7 +53,7 @@ def make_dataset(config: Config, *, key: PRNGKeyArray) -> jdl.DataLoader:
     return dataset
 
 
-def make_model(config: Config, *, key: PRNGKeyArray) -> GaussianMixtureModel:
+def make_model(config: Config, *, key: PRNGKeyArray) -> PyTree:
     """Initialize a model specified by the configuration.
 
     Args:
@@ -69,7 +74,19 @@ def make_model(config: Config, *, key: PRNGKeyArray) -> GaussianMixtureModel:
         case 'random_walk':
             raise NotImplementedError
         case 'sinusoid':
-            raise NotImplementedError
+            act = getattr(jax.nn, config.model.act)
+            hidden_sizes = config.model.hidden_sizes
+            k = config.model.k
+            n = config.model.n
+            if config.model.density == 'gaussian':
+                model = GaussianNetwork(MLP(1, n * 2, hidden_sizes, key=key, act=act))
+            elif config.model.density == 'mixture':
+                key1, key2 = jr.split(key)
+                model = MixtureDensityNetwork(
+                    cat=MLP(1, k, hidden_sizes, key=key1, act=act),
+                    gauss=MLP(1 + k, n * 2, hidden_sizes, key=key2, act=act),
+                    loss=config.model.loss,
+                )
     return model
 
 
@@ -100,7 +117,7 @@ def train_step(
     batch: tuple[Array, ...],
     opt_state: optax.OptState,
     *,
-    config: Config,
+    callback: Callable[..., None] = lambda _: None,
     key: PRNGKeyArray,
     opt: optax.GradientTransformation,
 ):
@@ -110,7 +127,8 @@ def train_step(
         model (`PyTree`): The current model.
         batch (`tuple[Array, ...]`): A 1-tuple containing the batched data.
         opt_state (`optax.OptState`): The current optimizer state.
-        config (`Config`): The current configuration.
+        callback (`Callable[..., None]`): Callback function.
+            Default to `lambda _: None`.
         key (`PRNGKeyArray`): JAX random key.
         opt (`optax.GradientTransformation`): The current optimizer.
 
@@ -119,25 +137,48 @@ def train_step(
     """
     (_, metrics), grads = model.loss_fn(*batch)
     updates, opt_state = opt.update(grads, opt_state)
-    jax.debug.callback(wandb.log, metrics)
+    jax.debug.callback(callback, metrics)
     return eqx.apply_updates(model, updates), opt_state
 
 
-def eval_step(model: PyTree, *, config: Config, key: PRNGKeyArray) -> None:
+def eval_step(
+    model: PyTree,
+    *,
+    callback: Callable[..., None] = lambda x: wandb.log(x),
+    config: Config,
+    key: PRNGKeyArray,
+) -> None:
     """Perform a single evaluation step.
 
     Args:
         model (`PyTree`): The current model.
+        callback (`Callable[..., None]`): Callback function.
+            Default to `lambda _: None`.
         config (`Config`): The current configuration.
         key (`PRNGKeyArray`): JAX random key.
     """
-    heatmap = plots.Heatmap().show(
-        model,
-        bimodal.dists,
-        [
-            {'alpha': 0.4, 'color': 'darkorange', 'label': 'posterior/1'},
-            {'alpha': 0.8, 'color': 'lavender', 'label': 'posterior/2'},
-        ],
-    )
-    jax.debug.callback(wandb.log, {'heatmap': wandb.Image(heatmap.fig)})
-    plt.close('all')
+    # TODO fix eval_step
+    if config.dataset.name == 'bimodal':
+        heatmap = plots.Heatmap().show(
+            model,
+            bimodal.dists,
+            [
+                {'alpha': 0.4, 'color': 'darkorange', 'label': 'posterior/1'},
+                {'alpha': 0.8, 'color': 'lavender', 'label': 'posterior/2'},
+            ],
+        )
+        jax.debug.callback(callback, {'heatmap': wandb.Image(heatmap.fig)})
+        plt.close('all')
+    elif config.dataset.name == 'sinusoid':
+        x = jnp.arange(0, 4 * jnp.pi, 1e-2)
+        dists = jax.vmap(model)(x)
+        if config.model.density == 'gaussian':
+            plt.plot(x, dists.mean, label='mean')
+        elif config.model.density == 'mixture':
+            plt.plot(x, dists.components.mean[:, 0], label='mode 1')
+            plt.plot(x, dists.components.mean[:, 1], label='mode 2')
+        plt.plot(x, jnp.sin(x), c='gray', linewidth=10, alpha=0.2)
+        plt.plot(x, jnp.sin(x + jnp.pi), c='gray', linewidth=10, alpha=0.2)
+        plt.legend()
+        jax.debug.callback(callback, {'sinusoid': wandb.Image(plt)})
+        plt.clf()

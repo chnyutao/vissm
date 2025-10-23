@@ -1,54 +1,12 @@
 from collections.abc import Callable, Sequence
 from itertools import pairwise
 
-import equinox as eqx
 import jax
-import jax.numpy as jnp
 import jax.random as jr
 from equinox import nn
 from jaxtyping import Array, PRNGKeyArray
 
-from .distributions import Categorical, Gaussian
-
-
-class CatNet(eqx.Module):
-    """Categorical Distribution Network."""
-
-    net: Callable[[Array], Array]
-
-    def __call__(self, x: Array) -> Categorical:
-        """
-        Compute the parameters of a Categorical distribution `log_p = f(x)`,
-        where `f(x)` is a parametrized neural network.
-
-        Args:
-            x (`Array`): Input array.
-
-        Returns:
-            A Categorical distribution.
-        """
-        log_p = jax.nn.log_softmax(self.net(x).ravel())
-        return Categorical(log_p)
-
-
-class GaussNet(eqx.Module):
-    """Gaussian Distribution Network."""
-
-    net: Callable[[Array], Array]
-
-    def __call__(self, x: Array) -> Gaussian:
-        """
-        Compute the parameters of a Gaussian distribution `(mean, std) = f(x)`,
-        where `f(x)` is a parametrized neural network.
-
-        Args:
-            x (`Array`): Input array.
-
-        Returns:
-            A Gaussian distribution.
-        """
-        mean, log_std = jnp.split(self.net(x).ravel(), 2)
-        return Gaussian(mean, jnp.exp(log_std))
+from .distributions import Gaussian
 
 
 class MLP(nn.Sequential):

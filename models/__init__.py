@@ -1,3 +1,3 @@
-from .models import GaussianMixtureModel
+from .models import GaussianMixtureModel, GaussianNetwork, MixtureDensityNetwork
 
-__all__ = ['GaussianMixtureModel']
+__all__ = ['GaussianMixtureModel', 'GaussianNetwork', 'MixtureDensityNetwork']
