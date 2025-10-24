@@ -111,8 +111,8 @@ class GaussianNetwork(eqx.Module):
 class MixtureDensityNetwork(eqx.Module):
     """Mixture Density Network (MDN)."""
 
-    cat: Callable[[Array], Categorical]
-    gauss: Callable[[Array], Gaussian]
+    cat: Callable[[Array], Array]
+    gauss: Callable[[Array], Array]
     loss: Loss = eqx.field(static=True)
 
     def __init__(
@@ -128,8 +128,8 @@ class MixtureDensityNetwork(eqx.Module):
             gauss (`Callable[[Array], Array]`): Gaussian network.
             loss (`Loss`): Type of loss function.
         """
-        self.cat = lambda x: Categorical(cat(x))
-        self.gauss = GaussianNetwork(gauss)
+        self.cat = cat
+        self.gauss = gauss
         self.loss = loss
 
     def __call__(self, x: Array) -> GaussianMixture:
@@ -141,10 +141,10 @@ class MixtureDensityNetwork(eqx.Module):
         Returns:
             Gaussian mixture distribution.
         """
-        weight = self.cat(x)
+        weight = Categorical(self.cat(x))
         k = weight.logits.shape[-1]
-        xs = jnp.hstack([x.repeat(k).reshape(k, 1), jnp.eye(k)])
-        components = jax.vmap(self.gauss)(xs)
+        means, stds = jnp.split(self.gauss(x), 2)
+        components = Gaussian(means.reshape(k, -1), stds.reshape(k, -1))
         return GaussianMixture(weight, components)
 
     @eqx.filter_value_and_grad(has_aux=True)

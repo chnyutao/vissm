@@ -84,7 +84,7 @@ def make_model(config: Config, *, key: PRNGKeyArray) -> PyTree:
                 key1, key2 = jr.split(key)
                 model = MixtureDensityNetwork(
                     cat=MLP(1, k, hidden_sizes, key=key1, act=act),
-                    gauss=MLP(1 + k, n * 2, hidden_sizes, key=key2, act=act),
+                    gauss=MLP(1, k * n * 2, hidden_sizes, key=key2, act=act),
                     loss=config.model.loss,
                 )
     return model
