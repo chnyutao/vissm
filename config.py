@@ -51,11 +51,11 @@ class ModelConfig:
 
 @dataclass
 class OptConfig:
-    name: Literal['adam', 'sgd'] = 'sgd'
-    """Name of the `optax` optimizer."""
-
     lr: float = 1e-4
     """Learning rate."""
+
+    name: Literal['adam', 'sgd'] = 'sgd'
+    """Name of the `optax` optimizer."""
 
 
 @dataclass
@@ -63,17 +63,17 @@ class Config:
     dataset: DatasetConfig = field(default_factory=DatasetConfig)
     """Dataset configuration."""
 
-    model: ModelConfig = field(default_factory=ModelConfig)
-    """Model configuration."""
-
-    opt: OptConfig = field(default_factory=OptConfig)
-    """Optimizer configuration."""
-
     epochs: int = 100
     """Epochs."""
 
     log_every: int = 1
     """Log evaluation metrics every `log_every` epochs."""
+
+    model: ModelConfig = field(default_factory=ModelConfig)
+    """Model configuration."""
+
+    opt: OptConfig = field(default_factory=OptConfig)
+    """Optimizer configuration."""
 
     seed: int = 42
     """Random seed."""
