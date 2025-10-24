@@ -143,8 +143,8 @@ class MixtureDensityNetwork(eqx.Module):
         """
         weight = Categorical(self.cat(x))
         k = weight.logits.shape[-1]
-        means, stds = jnp.split(self.gauss(x), 2)
-        components = Gaussian(means.reshape(k, -1), stds.reshape(k, -1))
+        means, log_stds = jnp.split(self.gauss(x), 2)
+        components = Gaussian(means.reshape(k, -1), jnp.exp(log_stds).reshape(k, -1))
         return GaussianMixture(weight, components)
 
     @eqx.filter_value_and_grad(has_aux=True)
