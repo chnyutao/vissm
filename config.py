@@ -54,7 +54,7 @@ class OptConfig:
     lr: float = 1e-4
     """Learning rate."""
 
-    name: Literal['adam', 'sgd'] = 'sgd'
+    name: Literal['adam', 'rmsprop', 'sgd'] = 'sgd'
     """Name of the `optax` optimizer."""
 
 

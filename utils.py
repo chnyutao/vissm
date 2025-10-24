@@ -105,6 +105,8 @@ def make_opt(
     match config.opt.name:
         case 'adam':
             opt = optax.adam(config.opt.lr)
+        case 'rmsprop':
+            opt = optax.rmsprop(config.opt.lr)
         case 'sgd':
             opt = optax.sgd(config.opt.lr)
     opt_state = opt.init(eqx.filter(model, eqx.is_array))
