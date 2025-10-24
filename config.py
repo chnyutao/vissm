@@ -78,6 +78,15 @@ class Config:
     seed: int = 42
     """Random seed."""
 
+    def __repr__(self) -> str:
+        return (
+            f'{self.model.loss.upper()}/{self.dataset.name}'
+            f'-{self.opt.name}({self.opt.lr:.0e})'
+            f'-seed={self.seed}'
+            f'-act={self.model.act}'
+            f'-k={self.model.k}'
+        )
+
     def asdict(self) -> dict:
         return asdict(self)
 

@@ -12,7 +12,7 @@ from utils import eval_step, make_dataset, make_model, make_opt, train_step
 # configuration
 config = tyro.extras.overridable_config_cli(default_configs)
 key = jr.key(config.seed)
-wandb.init(project='ngem', config=config.asdict())
+wandb.init(project='ngem', name=repr(config), config=config.asdict())
 
 # initialization
 key, dkey, mkey = jr.split(key, 3)
