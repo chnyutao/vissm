@@ -1,13 +1,12 @@
 from functools import partial
 
-import equinox as eqx
 import jax.random as jr
 import tyro
 import wandb
 from tqdm.auto import tqdm
 
 from config import default_configs
-from utils import eval_step, make_dataset, make_model, make_opt, train_step
+from utils import eval_step, make_dataset, make_model, make_opt, save_model, train_step
 
 # configuration
 config = tyro.extras.overridable_config_cli(default_configs)
@@ -33,7 +32,4 @@ for epoch in tqdm(range(config.epochs)):
         key, subkey = jr.split(key)
         model, opt_state = train_step(model, batch, opt_state, key=subkey)
 eval_step(model, key=key)
-
-# save model
-eqx.tree_serialise_leaves('model.eqx', model)
-wandb.save('model.eqx')
+save_model(model)

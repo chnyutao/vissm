@@ -171,3 +171,16 @@ def eval_step(
         sinusoid = plots.Sinusoid().show(model, options)
         jax.debug.callback(callback, {'sinusoid': wandb.Image(sinusoid.fig)})
     plt.close('all')
+
+
+def save_model(model: PyTree, *, path: str = 'model.eqx') -> None:
+    """
+    Save the model weigths locally & on wandb.
+
+    Args:
+        model (`PyTree`): The model to be saved..
+        path (`str`, optional): The local path to save the model.
+            Defaults to `'model.eqx'`.
+    """
+    eqx.tree_serialise_leaves(path, model)
+    wandb.save(path)
