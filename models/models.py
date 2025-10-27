@@ -44,9 +44,8 @@ class GaussianMixtureModel(GaussianMixture):
         Returns:
             Gaussian mixture distribution.
         """
-        match self.loss:
-            case 'ngem':
-                return GaussianMixture(self.weight, ngd(self.components))
+        if self.loss == 'ngem':
+            return GaussianMixture(self.weight, ngd(self.components))
         return self
 
     @eqx.filter_value_and_grad(has_aux=True)
@@ -145,6 +144,8 @@ class MixtureDensityNetwork(eqx.Module):
         k = weight.logits.shape[-1]
         means, log_stds = jnp.split(self.gauss(x), 2)
         components = Gaussian(means.reshape(k, -1), jnp.exp(log_stds).reshape(k, -1))
+        if self.loss == 'ngem':
+            components = ngd(components)
         return GaussianMixture(weight, components)
 
     @eqx.filter_value_and_grad(has_aux=True)
