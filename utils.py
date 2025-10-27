@@ -129,7 +129,7 @@ def train_step(
         model (`PyTree`): The current model.
         batch (`tuple[Array, ...]`): A 1-tuple containing the batched data.
         opt_state (`optax.OptState`): The current optimizer state.
-        callback (`Callable[..., None]`): Callback function.
+        callback (`Callable[..., None]`, optional): Callback function.
             Default to `lambda _: None`.
         key (`PRNGKeyArray`): JAX random key.
         opt (`optax.GradientTransformation`): The current optimizer.
@@ -154,7 +154,7 @@ def eval_step(
 
     Args:
         model (`PyTree`): The current model.
-        callback (`Callable[..., None]`): Callback function.
+        callback (`Callable[..., None]`, optional): Callback function.
             Default to `lambda _: None`.
         config (`Config`): The current configuration.
         key (`PRNGKeyArray`): JAX random key.
