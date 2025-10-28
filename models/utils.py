@@ -18,8 +18,8 @@ class MLP(nn.Sequential):
         out_size: int,
         hidden_sizes: Sequence[int] = (),
         *,
-        key: PRNGKeyArray,
         act: Callable[[Array], Array] = jax.nn.relu,
+        key: PRNGKeyArray,
     ) -> None:
         """Initialize an multi-layer perceptron.
 
@@ -29,17 +29,18 @@ class MLP(nn.Sequential):
             in_size (`int`): Input size.
             out_size (`int`): Output size.
             hidden_sizes (`Sequence[int]`): Hidden layer sizes.
-            key (`PRNGKeyArray`): JAX random key.
             act (`Callable[[Array], Array]`, optional):
                 The activation function. Default to `jax.nn.relu`.
+            key (`PRNGKeyArray`): JAX random key.
         """
         layer_sizes = [in_size, *hidden_sizes, out_size]
         layers = []
         keys = iter(jr.split(key, len(layer_sizes) - 1))
         for in_size, out_size in pairwise(layer_sizes):
             layers.append(nn.Linear(in_size, out_size, key=next(keys)))
+            layers.append(nn.LayerNorm(out_size, use_weight=False, use_bias=False))
             layers.append(nn.Lambda(act))
-        super().__init__(layers[:-1])  # drop last act
+        super().__init__(layers[:-2])  # drop last layer norm & act
 
     def __call__(self, x: Array) -> Array:
         """Forward the flattened input through the layers.
