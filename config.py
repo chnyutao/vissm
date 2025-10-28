@@ -16,7 +16,7 @@ class DatasetConfig:
     number of trajectories (in random walk).
     """
 
-    name: Literal['bimodal', 'canonical', 'random_walk', 'sinusoid'] = 'bimodal'
+    name: Literal['bimodal', 'canonical', 'sinusoid'] = 'bimodal'
     """Name of the dataset."""
 
     shuffle: bool = True
