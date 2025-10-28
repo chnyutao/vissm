@@ -1,19 +1,34 @@
+from functools import cache
 from typing import Any
 
 import jax.numpy as jnp
 import jax.random as jr
 import jax_dataloader as jdl
-from jaxtyping import PRNGKeyArray
+from jaxtyping import Array, PRNGKeyArray
 
-lims = (0.0, 4 * jnp.pi)
-f = (lambda x: jnp.sin(x), lambda x: jnp.sin(x + jnp.pi))
+
+@cache
+def make_data(n: int) -> tuple[Array, Array]:
+    """Generate data points from two sinusoid waves.
+
+    Args:
+        n (`int`): Number of data points.
+
+    Returns:
+        The generated data points, `n` of `(x, sin(x))`
+        and `n` of `(x, sin(x + pi))`.
+    """
+    x = jnp.linspace(0, 4 * jnp.pi, n)[:, jnp.newaxis]
+    y1 = jnp.sin(x)
+    y2 = jnp.sin(x + jnp.pi)
+    return jnp.concat([x, x]), jnp.concat([y1, y2])
 
 
 def make_sinusoid_waves(n: int, *, key: PRNGKeyArray, **kwds: Any) -> jdl.DataLoader:
     """Generate a dataset containing noisy sinusoid waves.
 
     Args:
-        n (`int`): The number of data points.
+        n (`int`): Number of data points.
         key (`PRNGKeyArray`): JAX random key.
         **kwds (`Any`): Extra keyword arguments for `jdl.DataLoader`.
 
@@ -22,15 +37,10 @@ def make_sinusoid_waves(n: int, *, key: PRNGKeyArray, **kwds: Any) -> jdl.DataLo
         either `(x, sin(x))` or `(x, sin(x + pi))`, and the sinusoids are pertubed by
         a noise from `N(0, 0.1)`.
     """
-    key, key1, key2, key3 = jr.split(key, 4)
+    key1, key2 = jr.split(key)
     # generate data
-    x = jr.uniform(key1, (n, 1), minval=lims[0], maxval=lims[1])
-    y1 = f[0](x) + jr.normal(key2, (n, 1)) * 0.01
-    y2 = f[1](x) + jr.normal(key3, (n, 1)) * 0.01
+    x, y = make_data(n)
+    y = y + 0.01 * jr.normal(key1, y.shape)
     # return
-    dataset = jdl.ArrayDataset(
-        jnp.concat([x, x]),
-        jnp.concat([y1, y2]),
-        asnumpy=False,
-    )
-    return jdl.DataLoader(dataset, backend='jax', generator=key, **kwds)
+    dataset = jdl.ArrayDataset(x, y, asnumpy=False)
+    return jdl.DataLoader(dataset, backend='jax', generator=key2, **kwds)
