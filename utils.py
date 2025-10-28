@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 import equinox as eqx
 import jax
+import jax.numpy as jnp
 import jax.random as jr
 import jax_dataloader as jdl
 import optax
@@ -49,8 +50,6 @@ def make_dataset(config: Config, *, key: PRNGKeyArray) -> jdl.DataLoader:
                 batch_size=config.dataset.batch_size,
                 shuffle=config.dataset.shuffle,
             )
-        case _:
-            raise NotImplementedError
     return dataset
 
 
@@ -72,20 +71,7 @@ def make_model(config: Config, *, key: PRNGKeyArray) -> PyTree:
                 config.model.loss,
                 key=key,
             )
-        case 'canonical':
-            if config.model.density != 'mixture':
-                raise NotImplementedError
-            key1, key2 = jr.split(key)
-            act = getattr(jax.nn, config.model.act)
-            hidden_sizes = config.model.hidden_sizes
-            k = config.model.k
-            n = config.model.n
-            model = MixtureDensityNetwork(
-                cat=MLP(1, k, hidden_sizes, key=key1, act=act),
-                gauss=MLP(1, k * n * 2, hidden_sizes, key=key2, act=act),
-                loss=config.model.loss,
-            )
-        case 'sinusoid':
+        case 'canonical' | 'sinusoid':
             act = getattr(jax.nn, config.model.act)
             hidden_sizes = config.model.hidden_sizes
             k = config.model.k
@@ -99,8 +85,6 @@ def make_model(config: Config, *, key: PRNGKeyArray) -> PyTree:
                     gauss=MLP(1, k * n * 2, hidden_sizes, key=key2, act=act),
                     loss=config.model.loss,
                 )
-        case _:
-            raise NotImplementedError
     return model
 
 
@@ -182,13 +166,26 @@ def eval_step(
             heatmap = plots.Heatmap().show(model, dataset.bimodal.dists, options)
             jax.debug.callback(callback, {'heatmap': wandb.Image(heatmap.fig)})
         case 'canonical':
-            pass
+            options = tuple({'color': f'tab:{c}'} for c in ('blue', 'orange', 'green'))
+            data = dataset.canonical.make_data(config.dataset.n)
+            with plots.Regression().show(model, data, options) as plot:
+                plot.ax.set_aspect('equal')
+                plot.ax.set_xlim(0.0, 1.0)
+                plot.ax.set_xticks([0.0, 1.0])
+                plot.ax.set_ylim(0.0, 1.0)
+                plot.ax.set_yticks([0.0, 1.0])
+            jax.debug.callback(callback, {'canonical': wandb.Image(plot.fig)})
         case 'sinusoid':
             options = ({'color': 'tab:blue'}, {'color': 'tab:orange'})
-            sinusoid = plots.Sinusoid().show(model, options)
-            jax.debug.callback(callback, {'sinusoid': wandb.Image(sinusoid.fig)})
-        case _:
-            raise NotImplementedError
+            data = dataset.sinusoid.make_data(config.dataset.n)
+            with plots.Regression().show(model, data, options) as plot:
+                plot.ax.set_xlim(0.0, 4 * jnp.pi)
+                plot.ax.set_xticks([0, 2 * jnp.pi, 4 * jnp.pi])
+                plot.ax.set_xticklabels(['$0$', '$2\\pi$', '$4\\pi$'])
+                plot.ax.set_ylim(-1.25, 1.25)
+                plot.ax.set_yticks([-1.0, 0.0, 1.0])
+                plot.ax.set_yticklabels(['$-1$', '$0$', '$1$'])
+            jax.debug.callback(callback, {'sinusoid': wandb.Image(plot.fig)})
     plt.close('all')
 
 

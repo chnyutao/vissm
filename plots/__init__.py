@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 
 from .heatmap import Heatmap
-from .sinusoid import Sinusoid
+from .regression import Regression
 
 # matplotlib global config
 plt.rcParams.update(
@@ -11,4 +11,4 @@ plt.rcParams.update(
     }
 )
 
-__all__ = ['Heatmap', 'Sinusoid']
+__all__ = ['Heatmap', 'Regression']
