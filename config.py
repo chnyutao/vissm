@@ -16,7 +16,7 @@ class DatasetConfig:
     number of trajectories (in random walk).
     """
 
-    name: Literal['bimodal', 'random_walk', 'sinusoid'] = 'bimodal'
+    name: Literal['bimodal', 'canonical', 'random_walk', 'sinusoid'] = 'bimodal'
     """Name of the dataset."""
 
     shuffle: bool = True
@@ -95,18 +95,48 @@ default_configs = {
     'bimodal': (
         'Run bimodal experiments.',
         Config(
-            dataset=DatasetConfig(batch_size=1, n=100, name='bimodal'),
+            dataset=DatasetConfig(
+                batch_size=1,
+                n=100,
+                name='bimodal',
+            ),
             epochs=10,
             log_every=1,
+        ),
+    ),
+    'canonical': (
+        'Run canonical experiments.',
+        Config(
+            dataset=DatasetConfig(
+                batch_size=32,
+                n=1000,
+                name='canonical',
+            ),
+            epochs=100,
+            log_every=10,
+            model=ModelConfig(
+                act='gelu',
+                hidden_sizes=(128, 128),
+                k=3,
+                n=1,
+            ),
         ),
     ),
     'sinusoid': (
         'Run sinusoid experiments.',
         Config(
-            dataset=DatasetConfig(batch_size=10, n=1000, name='sinusoid'),
-            model=ModelConfig(act='sigmoid', hidden_sizes=(100, 100, 100), n=1),
+            dataset=DatasetConfig(
+                batch_size=32,
+                n=1000,
+                name='sinusoid',
+            ),
             epochs=1000,
             log_every=100,
+            model=ModelConfig(
+                act='gelu',
+                hidden_sizes=(128, 128, 128, 128),
+                n=1,
+            ),
         ),
     ),
 }

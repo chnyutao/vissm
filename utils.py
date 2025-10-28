@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 import dataset
 import plots
 from config import Config
-from dataset import make_bimodal, make_random_walks, make_sinusoid_waves
+from dataset import make_bimodal, make_canonical, make_sinusoid_waves
 from models import GaussianMixtureModel, GaussianNetwork, MixtureDensityNetwork
 from models.utils import MLP
 
@@ -35,10 +35,9 @@ def make_dataset(config: Config, *, key: PRNGKeyArray) -> jdl.DataLoader:
                 batch_size=config.dataset.batch_size,
                 shuffle=config.dataset.shuffle,
             )
-        case 'random_walk':
-            dataset = make_random_walks(
+        case 'canonical':
+            dataset = make_canonical(
                 config.dataset.n,
-                config.dataset.length,
                 key=key,
                 batch_size=config.dataset.batch_size,
                 shuffle=config.dataset.shuffle,
@@ -50,6 +49,8 @@ def make_dataset(config: Config, *, key: PRNGKeyArray) -> jdl.DataLoader:
                 batch_size=config.dataset.batch_size,
                 shuffle=config.dataset.shuffle,
             )
+        case _:
+            raise NotImplementedError
     return dataset
 
 
@@ -71,8 +72,19 @@ def make_model(config: Config, *, key: PRNGKeyArray) -> PyTree:
                 config.model.loss,
                 key=key,
             )
-        case 'random_walk':
-            raise NotImplementedError
+        case 'canonical':
+            if config.model.density != 'mixture':
+                raise NotImplementedError
+            key1, key2 = jr.split(key)
+            act = getattr(jax.nn, config.model.act)
+            hidden_sizes = config.model.hidden_sizes
+            k = config.model.k
+            n = config.model.n
+            model = MixtureDensityNetwork(
+                cat=MLP(1, k, hidden_sizes, key=key1, act=act),
+                gauss=MLP(1, k * n * 2, hidden_sizes, key=key2, act=act),
+                loss=config.model.loss,
+            )
         case 'sinusoid':
             act = getattr(jax.nn, config.model.act)
             hidden_sizes = config.model.hidden_sizes
@@ -87,6 +99,8 @@ def make_model(config: Config, *, key: PRNGKeyArray) -> PyTree:
                     gauss=MLP(1, k * n * 2, hidden_sizes, key=key2, act=act),
                     loss=config.model.loss,
                 )
+        case _:
+            raise NotImplementedError
     return model
 
 
@@ -159,17 +173,22 @@ def eval_step(
         config (`Config`): The current configuration.
         key (`PRNGKeyArray`): JAX random key.
     """
-    if config.dataset.name == 'bimodal':
-        options = (
-            {'alpha': 0.4, 'color': 'darkorange', 'label': 'posterior/1'},
-            {'alpha': 0.8, 'color': 'lavender', 'label': 'posterior/2'},
-        )
-        heatmap = plots.Heatmap().show(model, dataset.bimodal.dists, options)
-        jax.debug.callback(callback, {'heatmap': wandb.Image(heatmap.fig)})
-    elif config.dataset.name == 'sinusoid':
-        options = ({'color': 'tab:blue'}, {'color': 'tab:orange'})
-        sinusoid = plots.Sinusoid().show(model, options)
-        jax.debug.callback(callback, {'sinusoid': wandb.Image(sinusoid.fig)})
+    match config.dataset.name:
+        case 'bimodal':
+            options = (
+                {'alpha': 0.4, 'color': 'darkorange', 'label': 'posterior/1'},
+                {'alpha': 0.8, 'color': 'lavender', 'label': 'posterior/2'},
+            )
+            heatmap = plots.Heatmap().show(model, dataset.bimodal.dists, options)
+            jax.debug.callback(callback, {'heatmap': wandb.Image(heatmap.fig)})
+        case 'canonical':
+            pass
+        case 'sinusoid':
+            options = ({'color': 'tab:blue'}, {'color': 'tab:orange'})
+            sinusoid = plots.Sinusoid().show(model, options)
+            jax.debug.callback(callback, {'sinusoid': wandb.Image(sinusoid.fig)})
+        case _:
+            raise NotImplementedError
     plt.close('all')
 
 
