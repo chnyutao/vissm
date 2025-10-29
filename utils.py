@@ -18,12 +18,18 @@ from models import GaussianMixtureModel, GaussianNetwork, MixtureDensityNetwork
 from models.utils import MLP
 
 
-def make_dataset(config: Config, *, key: PRNGKeyArray) -> jdl.DataLoader:
+def make_dataset(
+    config: Config,
+    *,
+    key: PRNGKeyArray,
+    train: bool = True,
+) -> jdl.DataLoader:
     """Initialize a dataset specified by the configuration.
 
     Args:
         config (`Config`): Configuration.
         key (`PRNGKeyArray`): JAX random key.
+        train (`bool`, optional): Train or eval set. Default to `True`.
 
     Returns:
         A `jax_dataloader.DataLoader`.
@@ -144,8 +150,9 @@ def train_step(
 def eval_step(
     model: PyTree,
     *,
-    callback: Callable[..., None] = lambda x: wandb.log(x),
+    callback: Callable[..., None] = lambda _: None,
     config: Config,
+    eval_set: jdl.DataLoader,
     key: PRNGKeyArray,
 ) -> None:
     """Perform a single evaluation step.
@@ -155,6 +162,7 @@ def eval_step(
         callback (`Callable[..., None]`, optional): Callback function.
             Default to `lambda _: None`.
         config (`Config`): The current configuration.
+        eval_set (`jdl.DataLoader`): The evaluation dataset.
         key (`PRNGKeyArray`): JAX random key.
     """
     match config.dataset.name:
@@ -167,23 +175,23 @@ def eval_step(
             jax.debug.callback(callback, {'heatmap': wandb.Image(heatmap.fig)})
         case 'canonical':
             options = tuple({'color': f'tab:{c}'} for c in ('blue', 'orange', 'green'))
-            data = dataset.canonical.make_data(config.dataset.n)
-            with plots.Regression().show(model, data, options) as plot:
+            xs, ys = map(jnp.concat, zip(*eval_set))
+            with plots.Regression().show(model, (xs, ys), options) as plot:
                 plot.ax.set_aspect('equal')
-                plot.ax.set_xlim(0.0, 1.0)
-                plot.ax.set_xticks([0.0, 1.0])
-                plot.ax.set_ylim(0.0, 1.0)
-                plot.ax.set_yticks([0.0, 1.0])
+                plot.ax.set_xlim(0, 1)
+                plot.ax.set_xticks([0, 1])
+                plot.ax.set_ylim(0, 1)
+                plot.ax.set_yticks([0, 1])
             jax.debug.callback(callback, {'canonical': wandb.Image(plot.fig)})
         case 'sinusoid':
             options = ({'color': 'tab:blue'}, {'color': 'tab:orange'})
-            data = dataset.sinusoid.make_data(config.dataset.n)
-            with plots.Regression().show(model, data, options) as plot:
-                plot.ax.set_xlim(0.0, 4 * jnp.pi)
+            xs, ys = map(jnp.concat, zip(*eval_set))
+            with plots.Regression().show(model, (xs, ys), options) as plot:
+                plot.ax.set_xlim(0, 4 * jnp.pi)
                 plot.ax.set_xticks([0, 2 * jnp.pi, 4 * jnp.pi])
                 plot.ax.set_xticklabels(['$0$', '$2\\pi$', '$4\\pi$'])
                 plot.ax.set_ylim(-1.25, 1.25)
-                plot.ax.set_yticks([-1.0, 0.0, 1.0])
+                plot.ax.set_yticks([-1, 0, 1])
                 plot.ax.set_yticklabels(['$-1$', '$0$', '$1$'])
             jax.debug.callback(callback, {'sinusoid': wandb.Image(plot.fig)})
     plt.close('all')
