@@ -15,6 +15,7 @@ import plots
 from config import Config
 from dataset import make_bimodal, make_canonical, make_sinusoid_waves
 from models import GaussianMixtureModel, GaussianNetwork, MixtureDensityNetwork
+from models.distributions import Distribution, Gaussian, GaussianMixture
 from models.utils import MLP
 
 
@@ -174,8 +175,9 @@ def eval_step(
             heatmap = plots.Heatmap().show(model, dataset.bimodal.dists, options)
             jax.debug.callback(callback, {'heatmap': wandb.Image(heatmap.fig)})
         case 'canonical':
-            options = tuple({'color': f'tab:{c}'} for c in ('blue', 'orange', 'green'))
             xs, ys = map(jnp.concat, zip(*eval_set))
+            # visualization
+            options = tuple({'color': f'tab:{c}'} for c in ('blue', 'orange', 'green'))
             with plots.Regression().show(model, (xs, ys), options) as plot:
                 plot.ax.set_aspect('equal')
                 plot.ax.set_xlim(0, 1)
@@ -183,9 +185,13 @@ def eval_step(
                 plot.ax.set_ylim(0, 1)
                 plot.ax.set_yticks([0, 1])
             jax.debug.callback(callback, {'canonical': wandb.Image(plot.fig)})
+            # rmse
+            dists = jax.vmap(model)(xs)
+            jax.debug.callback(callback, {'rmse': rmse(ys, dists)})
         case 'sinusoid':
-            options = ({'color': 'tab:blue'}, {'color': 'tab:orange'})
             xs, ys = map(jnp.concat, zip(*eval_set))
+            # visualization
+            options = ({'color': 'tab:blue'}, {'color': 'tab:orange'})
             with plots.Regression().show(model, (xs, ys), options) as plot:
                 plot.ax.set_xlim(0, 4 * jnp.pi)
                 plot.ax.set_xticks([0, 2 * jnp.pi, 4 * jnp.pi])
@@ -194,12 +200,14 @@ def eval_step(
                 plot.ax.set_yticks([-1, 0, 1])
                 plot.ax.set_yticklabels(['$-1$', '$0$', '$1$'])
             jax.debug.callback(callback, {'sinusoid': wandb.Image(plot.fig)})
+            # rmse
+            dists = jax.vmap(model)(xs)
+            jax.debug.callback(callback, {'rmse': rmse(ys, dists)})
     plt.close('all')
 
 
 def save_model(model: PyTree, *, path: str = 'model.eqx') -> None:
-    """
-    Save the model weigths locally & on wandb.
+    """Save the model weigths locally & on wandb.
 
     Args:
         model (`PyTree`): The model to be saved..
@@ -208,3 +216,26 @@ def save_model(model: PyTree, *, path: str = 'model.eqx') -> None:
     """
     eqx.tree_serialise_leaves(path, model)
     wandb.save(path)
+
+
+def rmse(y: Array, dists: Distribution) -> Array:
+    """Compute the root mean square error (RMSE) between the targets and predictions.
+    - `Gaussian`: RMSE is computed between the target and the mean;
+    - `GaussianMixture`: RMSE is computed as the minimum among mixture comoponents.
+
+    Args:
+        y (`Array`): The target values.
+        dists (`Distribution`): The predictive distributions
+
+    Returns:
+        RMSE between the targets and the predictions.
+    """
+
+    match dists:
+        case Gaussian(mean, _):
+            return jnp.sqrt(((y - mean) ** 2).sum(axis=-1)).mean()
+        case GaussianMixture(_, Gaussian(mean, _)):
+            y = y[:, jnp.newaxis]
+            return jnp.sqrt(((y - mean) ** 2).sum(axis=-1).min(axis=-1)).mean()
+        case _:
+            raise NotImplementedError
