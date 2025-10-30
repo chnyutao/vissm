@@ -19,7 +19,7 @@ def make_sinusoid_waves(n: int, *, key: PRNGKeyArray, **kwds: Any) -> jdl.DataLo
         either `(x, sin(x))` or `(x, sin(x + pi))`, and the sinusoids are pertubed by
         a noise from `N(0, 0.1)`.
     """
-    key1, key2, key3 = jr.split(key, 3)
+    key1, key2 = jr.split(key)
     # generate data
     x = jr.uniform(key1, (n, 1), minval=0, maxval=4 * jnp.pi)
     y1 = jnp.sin(x)
@@ -28,4 +28,4 @@ def make_sinusoid_waves(n: int, *, key: PRNGKeyArray, **kwds: Any) -> jdl.DataLo
     y = y + 0.01 * jr.normal(key2, y.shape)
     # return
     dataset = jdl.ArrayDataset(x, y, asnumpy=False)
-    return jdl.DataLoader(dataset, backend='jax', generator=key3, **kwds)
+    return jdl.DataLoader(dataset, backend='jax', **kwds)

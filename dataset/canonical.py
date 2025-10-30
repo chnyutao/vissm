@@ -18,11 +18,11 @@ def make_canonical(n: int, *, key: PRNGKeyArray, **kwds: Any) -> jdl.DataLoader:
         A dataset containing `n` data points, where each data point is a pair of
         `(x, y)` with `x = y + 0.3 * sin(2 * pi * y)` with noise.
     """
-    key1, key2, key3 = jr.split(key, 3)
+    key1, key2 = jr.split(key)
     # generate data
     y = jr.uniform(key1, (n, 1))
     x = y + 0.3 * jnp.sin(2 * jnp.pi * y)
     x = x + jr.uniform(key2, x.shape, minval=-0.1, maxval=0.1)
     # return
     dataset = jdl.ArrayDataset(x, y, asnumpy=False)
-    return jdl.DataLoader(dataset, backend='jax', generator=key3, **kwds)
+    return jdl.DataLoader(dataset, backend='jax', **kwds)
