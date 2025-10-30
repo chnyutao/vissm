@@ -1,7 +1,6 @@
 from typing import Any
 
 import jax.numpy as jnp
-import jax.random as jr
 import jax_dataloader as jdl
 from distrax import MixtureOfTwo
 from jaxtyping import PRNGKeyArray

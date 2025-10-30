@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from typing import Any
 
 import equinox as eqx
@@ -16,7 +15,6 @@ import plots
 from config import Config
 from dataset import make_bimodal, make_canonical, make_sinusoid_waves
 from models import GaussianMixtureModel, GaussianNetwork, MixtureDensityNetwork
-from models.distributions import Distribution, Gaussian, GaussianMixture
 from models.utils import MLP
 
 
