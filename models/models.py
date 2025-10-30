@@ -104,7 +104,8 @@ class GaussianNetwork(eqx.Module):
         dists = jax.vmap(self)(x)
         loss = -dists.to().log_prob(y).mean()
         # return
-        return loss, {'loss': loss}
+        rmse = jnp.sqrt(((y - dists.mean) ** 2).mean())
+        return loss, {'train/loss': loss, 'train/rmse': rmse}
 
 
 class MixtureDensityNetwork(eqx.Module):
@@ -172,4 +173,6 @@ class MixtureDensityNetwork(eqx.Module):
                 loss = -(rho * (log_weights + log_components)).sum(axis=-1).mean()
         # return
         entropy = dists.weight.to().entropy().mean()
-        return loss, {'loss': loss, 'entropy': entropy}
+        y_hat = dists.components.mean.squeeze()
+        rmse = jnp.sqrt(((y - y_hat) ** 2).min(axis=-1).mean())
+        return loss, {'train/loss': loss, 'train/entropy': entropy, 'train/rmse': rmse}
