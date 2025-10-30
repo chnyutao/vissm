@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import Any
 
 import equinox as eqx
 import jax
@@ -124,23 +125,21 @@ def train_step(
     batch: tuple[Array, ...],
     opt_state: optax.OptState,
     *,
-    callback: Callable[..., None] = lambda _: None,
     key: PRNGKeyArray,
     opt: optax.GradientTransformation,
-):
+) -> tuple[PyTree, optax.OptState, dict[str, Any]]:
     """Perform a single jitted training step.
 
     Args:
         model (`PyTree`): The current model.
         batch (`tuple[Array, ...]`): A 1-tuple containing the batched data.
         opt_state (`optax.OptState`): The current optimizer state.
-        callback (`Callable[..., None]`, optional): Callback function.
-            Default to `lambda _: None`.
         key (`PRNGKeyArray`): JAX random key.
         opt (`optax.GradientTransformation`): The current optimizer.
 
     Returns:
-        A 2-tuple containing the updated model, and the updated optimizer state.
+        A 3-tuple containing the updated model, and the updated optimizer state,
+        and the training metrics.
     """
     (_, metrics), grads = model.loss_fn(*batch)
     updates, opt_state = opt.update(
@@ -148,24 +147,21 @@ def train_step(
         state=opt_state,
         params=eqx.filter(model, eqx.is_array),
     )
-    jax.debug.callback(callback, metrics)
-    return eqx.apply_updates(model, updates), opt_state
+    model = eqx.apply_updates(model, updates)
+    return model, opt_state, metrics
 
 
 def eval_step(
     model: PyTree,
     *,
-    callback: Callable[..., None] = lambda _: None,
     config: Config,
     eval_set: jdl.DataLoader,
     key: PRNGKeyArray,
-) -> None:
+) -> dict[str, Any]:
     """Perform a single evaluation step.
 
     Args:
         model (`PyTree`): The current model.
-        callback (`Callable[..., None]`, optional): Callback function.
-            Default to `lambda _: None`.
         config (`Config`): The current configuration.
         eval_set (`jdl.DataLoader`): The evaluation dataset.
         key (`PRNGKeyArray`): JAX random key.
@@ -177,7 +173,7 @@ def eval_step(
                 {'alpha': 0.8, 'color': 'lavender', 'label': 'posterior/2'},
             )
             heatmap = plots.Heatmap().show(model, dataset.bimodal.dists, options)
-            jax.debug.callback(callback, {'eval/heatmap': wandb.Image(heatmap.fig)})
+            metrics = {'eval/heatmap': wandb.Image(heatmap.fig)}
         case 'canonical':
             xs, ys = map(jnp.concat, zip(*eval_set))
             options = tuple({'color': f'tab:{c}'} for c in ('blue', 'orange', 'green'))
@@ -187,7 +183,7 @@ def eval_step(
                 plot.ax.set_xticks([0, 1])
                 plot.ax.set_ylim(0, 1)
                 plot.ax.set_yticks([0, 1])
-            jax.debug.callback(callback, {'eval/regression': wandb.Image(plot.fig)})
+            metrics = {'eval/regression': wandb.Image(plot.fig)}
         case 'sinusoid':
             xs, ys = map(jnp.concat, zip(*eval_set))
             options = ({'color': 'tab:blue'}, {'color': 'tab:orange'})
@@ -198,8 +194,9 @@ def eval_step(
                 plot.ax.set_ylim(-1.25, 1.25)
                 plot.ax.set_yticks([-1, 0, 1])
                 plot.ax.set_yticklabels(['$-1$', '$0$', '$1$'])
-            jax.debug.callback(callback, {'eval/regression': wandb.Image(plot.fig)})
+            metrics = {'eval/regression': wandb.Image(plot.fig)}
     plt.close('all')
+    return metrics
 
 
 def save_model(model: PyTree, *, path: str = 'model.eqx') -> None:
@@ -212,26 +209,3 @@ def save_model(model: PyTree, *, path: str = 'model.eqx') -> None:
     """
     eqx.tree_serialise_leaves(path, model)
     wandb.save(path)
-
-
-def rmse(y: Array, dists: Distribution) -> Array:
-    """Compute the root mean square error (RMSE) between the targets and predictions.
-    - `Gaussian`: RMSE is computed between the target and the mean;
-    - `GaussianMixture`: RMSE is computed as the minimum among mixture comoponents.
-
-    Args:
-        y (`Array`): The target values.
-        dists (`Distribution`): The predictive distributions
-
-    Returns:
-        RMSE between the targets and the predictions.
-    """
-
-    match dists:
-        case Gaussian(mean, _):
-            return jnp.sqrt(((y - mean) ** 2).sum(axis=-1)).mean()
-        case GaussianMixture(_, Gaussian(mean, _)):
-            y = y[:, jnp.newaxis]
-            return jnp.sqrt(((y - mean) ** 2).sum(axis=-1).min(axis=-1)).mean()
-        case _:
-            raise NotImplementedError
