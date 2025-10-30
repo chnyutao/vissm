@@ -22,7 +22,7 @@ def make_canonical(n: int, *, key: PRNGKeyArray, **kwds: Any) -> jdl.DataLoader:
     # generate data
     y = jr.uniform(key1, (n, 1))
     x = y + 0.3 * jnp.sin(2 * jnp.pi * y)
-    x = x + jr.uniform(key2, x.shape, minval=-0.1, maxval=0.1)
+    x = x + 0.05 * jr.normal(key2, x.shape)
     # return
     dataset = jdl.ArrayDataset(x, y, asnumpy=False)
     return jdl.DataLoader(dataset, backend='jax', **kwds)
