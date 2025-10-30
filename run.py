@@ -18,7 +18,7 @@ key, key1, key2 = jr.split(key, 3)
 train_set = make_dataset(config, key=key1, train=True)
 eval_set = make_dataset(config, key=key2, train=False)
 
-# init mode
+# init model
 key, subkey = jr.split(key)
 model = make_model(config, key=subkey)
 opt, opt_state = make_opt(config, model)
