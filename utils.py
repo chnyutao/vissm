@@ -143,7 +143,11 @@ def train_step(
         A 2-tuple containing the updated model, and the updated optimizer state.
     """
     (_, metrics), grads = model.loss_fn(*batch)
-    updates, opt_state = opt.update(grads, opt_state)
+    updates, opt_state = opt.update(
+        updates=grads,
+        state=opt_state,
+        params=eqx.filter(model, eqx.is_array),
+    )
     jax.debug.callback(callback, metrics)
     return eqx.apply_updates(model, updates), opt_state
 
